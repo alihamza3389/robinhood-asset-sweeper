@@ -64,6 +64,21 @@ npm start
 
 ---
 
+## 🔒 Security, Privacy & Local Key Management
+
+Entering private keys into scripts requires absolute transparency and cryptographic assurance:
+
+* 🛡️ **100% Open-Source & Auditable**: No compiled binaries, minified bundles, or obfuscated code. Every line of TypeScript is cleanly laid out in [`src/`](./src) so you can inspect every transaction handler and network call before running.
+* 🔐 **Local-Only Cryptographic Signing (`secp256k1`)**: All transaction payloads are constructed, serialized, and signed in-memory on your local machine using [`viem`](https://viem.sh). Your raw private key **never** leaves your local environment.
+* 🚫 **Zero Telemetry & No Key Exfiltration**: The script only makes two types of network requests:
+  1. Standard **JSON-RPC calls** to the official Robinhood RPC (`eth_getBalance`, `eth_estimateGas`, `eth_sendRawTransaction`).
+  2. Read-only **GET requests** to the Blockscout Pro API to discover token contract addresses.
+  There are zero telemetry services, external trackers, or third-party servers.
+* 🛑 **Zero Smart Contract Allowances (Direct EOA Transfers)**: All transactions execute direct `transfer(recipient, amount)` and native transfers. The script **never** requests `approve()` or infinite allowance permissions for any third-party routing contracts, eliminating token-drain risks.
+* 📁 **Strict Git Protection**: The repository's [`.gitignore`](.gitignore) strictly prevents `.env` and local secrets from ever being staged or committed to version control.
+
+---
+
 ## 💖 Support & Donations
 
 If this tool helped you or saved you gas, consider buying the dev a coffee!
