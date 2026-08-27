@@ -44,7 +44,7 @@ cp .env.example .env
 Open `.env` and fill in:
 - `PRIVATE_KEY`: Your sender wallet private key (starts with `0x`).
 - `DESTINATION_ADDRESS`: The address where you want all selected assets sent.
-- `BLOCKSCOUT_API_KEY`: Your Blockscout Pro API key from [dev.blockscout.com](https://dev.blockscout.com).
+- `BLOCKSCOUT_API_KEY`: Your Blockscout Pro API key from [dev.blockscout.com](https://dev.blockscout.com) (**100% Free** — takes 10 seconds to generate, no payment/credit card required).
 
 *(All Robinhood Chain RPC, Chain ID `4663`, and Explorer endpoints are pre-configured by default).*
 
