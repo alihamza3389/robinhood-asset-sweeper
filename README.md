@@ -45,3 +45,20 @@ npm start
 3. **Amount Configuration**: Choose `100% (Max)` or specify custom amounts.
 4. **Gas Protection**: ERC-20 tokens are transferred first; Native ETH is transferred last with automatic dynamic gas reserve calculation.
 5. **Confirmation & Broadcast**: Shows a summary plan before prompting for final confirmation, then broadcasts transactions sequentially with live receipt tracking.
+
+---
+
+## 💖 Support & Donations
+
+If this tool helped you or saved you gas, consider buying the dev a coffee!
+
+- **EVM** (Ethereum / Arbitrum / Base / Polygon / Robinhood Chain):
+  ```
+  0xcDcC4656293424544F32BfA58089e982B9624866
+  ```
+
+- **Solana**:
+  ```
+  94TmHVSd6ZWc9cAWKysQXQ5hGaymBvkQVEgaTtLVyHt8
+  ```
+

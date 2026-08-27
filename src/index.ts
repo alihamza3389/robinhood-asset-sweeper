@@ -320,6 +320,10 @@ async function main() {
   console.log(
     `Status: ${chalk.green(`${successfulCount} Succeeded`)}, ${chalk.red(`${failedCount} Failed`)}, ${chalk.yellow(`${skippedCount} Skipped`)}`
   );
+  console.log('====================================================================');
+  console.log(chalk.gray(`💖 Support the developer:`));
+  console.log(chalk.gray(`   EVM:    ${chalk.white('0xcDcC4656293424544F32BfA58089e982B9624866')}`));
+  console.log(chalk.gray(`   Solana: ${chalk.white('94TmHVSd6ZWc9cAWKysQXQ5hGaymBvkQVEgaTtLVyHt8')}`));
   console.log('====================================================================\n');
 }
 
