@@ -4,6 +4,22 @@ An interactive CLI tool built on **Viem** and **Blockscout Pro API** to batch tr
 
 ---
 
+## 💡 Why This Exists & Use Cases
+
+This tool was created to eliminate the painful, repetitive process of manually signing dozens of individual transfer transactions.
+
+* 🪣 **Bucket Shop ([bucket.markets](https://bucket.markets)) Distribution Sweeper**:
+  Bucket Shop distributes trading fees across **1 to 20 different assets** (crypto tokens, tokenized stocks, etc.) directly into user wallets and Bucket Accounts. Holders quickly accumulate scattered balances across multiple tokens. This tool auto-detects all your accumulated payout rewards and sweeps them to your main wallet in one shot.
+* 🧹 **Portfolio Migration & Cold Storage**:
+  Move your entire multi-token portfolio to a new address or hardware wallet in seconds instead of transferring tokens one-by-one.
+* 🧽 **Wallet Cleanup & Dust Consolidation**:
+  Consolidate leftover token balances, airdrops, and DeFi farming remnants across protocols on the Robinhood Chain.
+* 🔥 **Burner Wallet Draining**:
+  Instantly sweep all assets and native gas from temporary or trading wallets to a secure primary vault.
+
+
+---
+
 ## Network Specification (Robinhood Chain)
 
 | Parameter | Value |
