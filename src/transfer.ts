@@ -13,6 +13,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { AssetInfo, AssetTransferPlan, ExecutionResult, NetworkConfig } from './types.js';
+import { classifyAsset } from './registry.js';
 
 export const erc20Abi = parseAbi([
   'function name() view returns (string)',
@@ -20,6 +21,8 @@ export const erc20Abi = parseAbi([
   'function decimals() view returns (uint8)',
   'function balanceOf(address owner) view returns (uint256)',
   'function transfer(address to, uint256 amount) returns (bool)',
+  'function approve(address spender, uint256 amount) returns (bool)',
+  'function allowance(address owner, address spender) view returns (uint256)',
 ]);
 
 export function createClients(config: NetworkConfig, privateKey: `0x${string}`) {
@@ -67,11 +70,13 @@ export async function fetchNativeAsset(
   return {
     address: 'NATIVE',
     type: 'NATIVE',
+    category: 'NATIVE',
     name: 'Native Gas Token',
     symbol,
     decimals,
     balanceRaw,
     balanceFormatted: formatUnits(balanceRaw, decimals),
+    isSellable: false,
   };
 }
 
@@ -81,7 +86,7 @@ export async function fetchOnchainErc20(
   ownerAddress: `0x${string}`
 ): Promise<AssetInfo | null> {
   try {
-    const [name, symbol, decimals, balanceRaw] = await Promise.all([
+    const [name, symbol, decimals, balanceRaw, classification] = await Promise.all([
       publicClient.readContract({
         address: tokenAddress,
         abi: erc20Abi,
@@ -103,16 +108,19 @@ export async function fetchOnchainErc20(
         functionName: 'balanceOf',
         args: [ownerAddress],
       }),
+      classifyAsset(tokenAddress, publicClient),
     ]);
 
     return {
       address: tokenAddress.toLowerCase() as `0x${string}`,
       type: 'ERC20',
+      category: classification.category,
       name,
       symbol,
       decimals: Number(decimals),
       balanceRaw,
       balanceFormatted: formatUnits(balanceRaw, Number(decimals)),
+      isSellable: classification.isSellable,
     };
   } catch {
     return null;

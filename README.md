@@ -1,22 +1,42 @@
-# Robinhood Chain Multi-Asset Batch Sender 🚀
+# Robinhood Chain Multi-Asset Sweeper & Batch Seller (v2.0)
 
-An interactive CLI tool built on **Viem** and **Blockscout Pro API** to batch transfer multiple assets (Native ETH + ERC-20 tokens) from one wallet to a single destination address on the **Robinhood Chain (Arbitrum Orbit L2, Chain ID: `4663`)**.
+An interactive CLI tool built on **Viem** and **Blockscout Pro API** to batch sweep or batch sell multiple assets (Native ETH + ERC-20 tokens, tokenized stocks, and reward distributions) in one sequence on **Robinhood Chain (Arbitrum Orbit L2, Chain ID: `4663`)**.
 
 ---
 
-## 💡 Why This Exists & Use Cases
+## What's New in v2.0
 
-This tool was created to eliminate the painful, repetitive process of manually signing dozens of individual transfer transactions.
+* **Batch Sell & Liquidation Engine**:
+  * Swap any selection of tokens directly to ETH in one interactive session.
+  * Native routing through Robinhood Chain DEX contracts:
+    * **$BUCKET Token**: Liquidated via `BucketRouter` (`0x35f9D5...`).
+    * **USDG-routed Stocks** (AAPL, SPCX, NVDA, PLTR, TSLA): Liquidated via `StockRouterUsdg` (`0x716f97...`).
+    * **Crypto & Registered Stocks** (POOLS, DOGO, JUGGERNAUT, CASHCAT, USDG, NET, etc.): Liquidated via `StockRouterDirect` (`0xbdA740...`).
+* **3 Flexible Execution Modes**:
+  1. `Transfer / Sweep Assets`: Direct peer-to-peer or cold-storage batch transfer of selected assets.
+  2. `Batch Sell to ETH`: Converts selected tokens to ETH and deposits the proceeds directly into your wallet.
+  3. `Sell & Sweep`: Sells selected tokens for ETH, consolidates the balance, and sweeps the final remaining ETH to a target destination address.
+* **Parallelized Scanning Engine**:
+  * Simultaneous asynchronous discovery queries Blockscout Pro API, official Robinhood stock token registries, and on-chain Uniswap v4 pool states in parallel, bringing startup scan times down to ~1-2 seconds.
+* **Real-Time On-Chain Pricing**:
+  * Pulls live asset valuations from indexer price feeds and reads on-chain Uniswap v4 `StateView` (`0xF333...`) slot0 pool ratios to accurately price $BUCKET and other assets in USD.
+* **Automatic Custom Token Persistence**:
+  * Manually added ERC-20 contract addresses are automatically saved to `custom-tokens.json` and scanned on every future run without requiring re-entry.
+* **Zero-Revert Safeguards**:
+  * Automatically verifies live on-chain token balances immediately prior to transaction construction to eliminate precision mismatches and balance drift errors.
 
-* 🪣 **Bucket Shop ([bucket.markets](https://bucket.markets)) Distribution Sweeper**:
-  Bucket Shop distributes trading fees across **1 to 20 different assets** (crypto tokens, tokenized stocks, etc.) directly into user wallets and Bucket Accounts. Holders quickly accumulate scattered balances across multiple tokens. This tool auto-detects all your accumulated payout rewards and sweeps them to your main wallet in one shot.
-* 🧹 **Portfolio Migration & Cold Storage**:
-  Move your entire multi-token portfolio to a new address or hardware wallet in seconds instead of transferring tokens one-by-one.
-* 🧽 **Wallet Cleanup & Dust Consolidation**:
-  Consolidate leftover token balances, airdrops, and DeFi farming remnants across protocols on the Robinhood Chain.
-* 🔥 **Burner Wallet Draining**:
-  Instantly sweep all assets and native gas from temporary or trading wallets to a secure primary vault.
+---
 
+## Use Cases
+
+* **Bucket Shop ([bucket.markets](https://bucket.markets)) Distribution Sweeping**:
+  Bucket Shop distributes fee rewards across 1 to 20 different assets (crypto tokens, tokenized stocks) into user wallets. This tool auto-detects all accumulated payout rewards and either sweeps them or liquidates them all into ETH in one pass.
+* **Portfolio Liquidation**:
+  Exit small positions, airdrop dust, or reward tokens across multiple pools into native ETH without manually approving and swapping on separate web UIs.
+* **Cold Storage Migration**:
+  Transfer an entire multi-asset portfolio to cold storage or a hardware wallet in seconds.
+* **Burner Wallet Draining**:
+  Sweep all tokens and remaining native gas from temporary addresses to a primary vault with automated gas reserve deduction.
 
 ---
 
@@ -42,54 +62,43 @@ cp .env.example .env
 ```
 
 Open `.env` and fill in:
-- `PRIVATE_KEY`: Your sender wallet private key (starts with `0x`).
-- `DESTINATION_ADDRESS`: The address where you want all selected assets sent.
-- `BLOCKSCOUT_API_KEY`: Your Blockscout Pro API key from [dev.blockscout.com](https://dev.blockscout.com) (**100% Free** — takes 10 seconds to generate, no payment/credit card required).
+* `PRIVATE_KEY`: Your sender wallet private key (starts with `0x`).
+* `DESTINATION_ADDRESS`: The address where you want swept assets sent.
+* `BLOCKSCOUT_API_KEY`: Your Blockscout Pro API key from [dev.blockscout.com](https://dev.blockscout.com) (Free, no credit card required).
 
-*(All Robinhood Chain RPC, Chain ID `4663`, and Explorer endpoints are pre-configured by default).*
-
----
-
-### 2. Run the Interactive Sender
+### 2. Run the Tool
 ```bash
 npm start
 ```
 
-### 3. How It Works
-1. **Asset Discovery**: Connects to Robinhood Chain, queries native balance via RPC and all ERC-20 token holdings via Blockscout Pro API.
-2. **Interactive Checklist**: Toggle the assets you want to send using `[Space]`.
-3. **Amount Configuration**: Choose `100% (Max)` or specify custom amounts.
-4. **Gas Protection**: ERC-20 tokens are transferred first; Native ETH is transferred last with automatic dynamic gas reserve calculation.
-5. **Confirmation & Broadcast**: Shows a summary plan before prompting for final confirmation, then broadcasts transactions sequentially with live receipt tracking.
+### 3. Workflow
+1. **Mode Selection**: Choose between `Transfer / Sweep Assets`, `Batch Sell to ETH`, or `Sell & Sweep`.
+2. **Interactive Selection**: Toggle the assets you want to process using `[Space]`.
+3. **Amount Configuration**: Choose `100% (Max)` or specify exact token quantities.
+4. **Plan Preview & Confirmation**: Review estimated USD values, gas reserve calculations, and execution routes before confirming.
+5. **Execution**: Transactions are signed locally and broadcast sequentially with live hash and explorer links.
 
 ---
 
-## 🔒 Security, Privacy & Local Key Management
+## Security & Architecture
 
-Entering private keys into scripts requires absolute transparency and cryptographic assurance:
-
-* 🛡️ **100% Open-Source & Auditable**: No compiled binaries, minified bundles, or obfuscated code. Every line of TypeScript is cleanly laid out in [`src/`](./src) so you can inspect every transaction handler and network call before running.
-* 🔐 **Local-Only Cryptographic Signing (`secp256k1`)**: All transaction payloads are constructed, serialized, and signed in-memory on your local machine using [`viem`](https://viem.sh). Your raw private key **never** leaves your local environment.
-* 🚫 **Zero Telemetry & No Key Exfiltration**: The script only makes two types of network requests:
-  1. Standard **JSON-RPC calls** to the official Robinhood RPC (`eth_getBalance`, `eth_estimateGas`, `eth_sendRawTransaction`).
-  2. Read-only **GET requests** to the Blockscout Pro API to discover token contract addresses.
-  There are zero telemetry services, external trackers, or third-party servers.
-* 🛑 **Zero Smart Contract Allowances (Direct EOA Transfers)**: All transactions execute direct `transfer(recipient, amount)` and native transfers. The script **never** requests `approve()` or infinite allowance permissions for any third-party routing contracts, eliminating token-drain risks.
-* 📁 **Strict Git Protection**: The repository's [`.gitignore`](.gitignore) strictly prevents `.env` and local secrets from ever being staged or committed to version control.
+* **100% Non-Custodial & Local In-Memory Signing**: Private keys are loaded into memory and used strictly with Viem for local `secp256k1` transaction signing. Keys never touch external servers or telemetry endpoints.
+* **Exact Allowance Approvals**: Token approvals for DEX routers are strictly scoped to the exact required routers when executing swaps.
+* **Dynamic Orbit L2 Gas Estimation**: Uses dynamic base fee + tip calculations tailored to Arbitrum Orbit chains with safety margins to prevent stuck transactions.
+* **Git Ignored Secrets**: `.env` and `custom-tokens.json` are strictly ignored by git to protect private keys and personal tracked token lists.
 
 ---
 
-## 💖 Support & Donations
+## Donations & Support
 
-If this tool helped you or saved you gas, consider buying the dev a coffee!
+If this tool helped you manage your assets or save time, donations are appreciated:
 
-- **EVM** (Ethereum / Arbitrum / Base / Polygon / Robinhood Chain):
+* **EVM** (Ethereum / Arbitrum / Base / Polygon / Robinhood Chain):
   ```
   0xcDcC4656293424544F32BfA58089e982B9624866
   ```
 
-- **Solana**:
+* **Solana**:
   ```
   94TmHVSd6ZWc9cAWKysQXQ5hGaymBvkQVEgaTtLVyHt8
   ```
-

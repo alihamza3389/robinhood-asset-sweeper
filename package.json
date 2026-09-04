@@ -1,7 +1,7 @@
 {
   "name": "robinhood-evm-asset-sweeper",
-  "version": "1.0.0",
-  "description": "Multi-asset EVM batch transfer CLI with Blockscout Pro API integration",
+  "version": "2.0.0",
+  "description": "Multi-asset EVM batch transfer and DEX seller CLI with Blockscout Pro API integration",
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",

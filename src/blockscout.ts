@@ -86,11 +86,13 @@ function parseBlockscoutResponse(data: any): AssetInfo[] {
         assets.push({
           address: rawAddress.toLowerCase() as `0x${string}`,
           type: 'ERC20',
+          category: 'UNREGISTERED',
           name: item.tokenName || item.name || 'Unknown Token',
           symbol: item.tokenSymbol || item.symbol || '???',
           decimals: isNaN(decimals) ? 18 : decimals,
           balanceRaw,
           balanceFormatted: formatUnits(balanceRaw, isNaN(decimals) ? 18 : decimals),
+          isSellable: false,
         });
       } catch {
         continue;
@@ -125,11 +127,13 @@ function parseBlockscoutResponse(data: any): AssetInfo[] {
       assets.push({
         address: rawAddress.toLowerCase() as `0x${string}`,
         type: 'ERC20',
+        category: 'UNREGISTERED',
         name: token.name || 'Unknown Token',
         symbol: token.symbol || '???',
         decimals: dec,
         balanceRaw,
         balanceFormatted: formatUnits(balanceRaw, dec),
+        isSellable: false,
       });
     } catch {
       continue;
