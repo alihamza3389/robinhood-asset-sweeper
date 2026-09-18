@@ -67,7 +67,7 @@ An interactive CLI tool built on **Viem** and **Blockscout Pro API** to batch sw
 
 ### ⚡ 1-Click Launchers (Recommended)
 
-* **Windows**: Simply double-click **`run.bat`** (automatically checks Node.js, sets up `.env`, installs packages, and launches the interactive tool).
+* **Windows (CMD, PowerShell / pwsh)**: Double-click **`run.bat`** (or run `run.bat` in CMD / `.\run.ps1` in PowerShell). Automatically checks Node.js, sets up `.env`, installs packages, and launches.
 * **Linux / macOS**: Run **`./run.sh`** in your terminal.
 
 ---

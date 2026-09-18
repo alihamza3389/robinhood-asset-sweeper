@@ -41,13 +41,27 @@ The script needs to know which wallet to scan. Your private key stays **100% on 
 
 ---
 
-### Step 4: Run the Tool (1-Click)
-1. In the project folder, simply **double-click** the file named:
-   ```
-   run.bat
-   ```
-2. On your first time running, it will automatically install required packages in a few seconds, then launch the interactive tool!
-3. Use your keyboard arrows to select options, **[Space]** to select/unselect tokens, and **[Enter]** to confirm.
+### Step 4: Run the Tool (CMD, PowerShell, or 1-Click)
+
+You can launch using whichever method you prefer:
+
+* **Option A: 1-Click Double Click**
+  Inside the folder, simply double-click:
+  ```
+  run.bat
+  ```
+* **Option B: Command Prompt (cmd.exe)**
+  ```cmd
+  run.bat
+  ```
+* **Option C: PowerShell / pwsh**
+  ```powershell
+  .\run.ps1
+  ```
+  *(Or simply `.\run.bat`)*
+
+On your first time running, it will automatically install required packages in a few seconds, then launch the interactive tool!
+Use your keyboard arrows to select options, **[Space]** to select/unselect tokens, and **[Enter]** to confirm.
 
 ---
 
