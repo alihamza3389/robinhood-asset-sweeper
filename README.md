@@ -1,6 +1,6 @@
 # Robinhood Chain Multi-Asset Sweeper & Batch Seller 🚀 (v2.0)
 
-An interactive CLI tool built on **Viem** and **Blockscout Pro API** to batch sweep or batch sell multiple assets (Native ETH + ERC-20 tokens, tokenized stocks, and reward distributions) in one sequence on **Robinhood Chain (Arbitrum Orbit L2, Chain ID: `4663`)**.
+An interactive CLI tool built on **Viem** and **Blockscout Pro API** to batch sweep, sell, or burn multiple assets (Native ETH + ERC-20 tokens, tokenized stocks, and reward distributions) in one sequence on **Robinhood Chain (Arbitrum Orbit L2, Chain ID: `4663`)**.
 
 ---
 
@@ -16,17 +16,20 @@ An interactive CLI tool built on **Viem** and **Blockscout Pro API** to batch sw
   1. `Transfer / Sweep Assets`: Direct peer-to-peer or cold-storage batch transfer of selected assets to any destination.
   2. `Batch Sell to ETH`: Converts selected tokens to ETH and deposits the proceeds directly into your wallet.
   3. `Sell & Sweep`: Sells selected tokens for ETH, consolidates the balance, and sweeps the final remaining ETH to a target destination address.
-  4. `Burn / Discard to Dead Address`: Safely discard dead tokens, worthless meme coins, or scam airdrops by permanently sending them to `0x000000000000000000000000000000000000dEaD`.
+  4. `Burn / Discard to Dead Address`: Safely purge dead tokens, worthless meme coins, or scam dust by permanently transferring them to `0x000000000000000000000000000000000000dEaD`.
 * 🎯 **Dynamic Destination Prompting**:
-  * Automatically prompts for the recipient address when you run the script, pre-filling your `.env` destination as the default. You can also type `"dead"` at the prompt to route directly to the burn address.
+  * Automatically prompts for the recipient address when you run the script, pre-filling your `.env` destination as the default. You can also type `"dead"` or `"burn"` at the prompt to route directly to the burn address.
+* 🔗 **Live Clickable GMGN Chart Links**:
+  * On the amount configuration step, the tool displays the complete contract address hyperlinked directly to [GMGN.ai](https://gmgn.ai) (`https://gmgn.ai/robinhood/token/sZ5uzVHs_<address>`), letting you instantly inspect liquidity, volume, and charts before confirming.
 * 🚀 **Parallelized Fast Scanning Engine**:
   * Simultaneous asynchronous discovery queries Blockscout Pro API, official Robinhood stock token registries, and on-chain Uniswap v4 pool states in parallel, bringing startup scan times down to ~1-2 seconds.
 * 📈 **Real-Time On-Chain Pricing & USD Valuations**:
   * Pulls live asset valuations from indexer price feeds and reads on-chain Uniswap v4 `StateView` (`0xF333...`) slot0 pool ratios to accurately price $BUCKET and other assets in USD.
 * 💾 **Automatic Custom Token Persistence**:
   * Manually added ERC-20 contract addresses are automatically saved to `custom-tokens.json` and scanned on every future run without requiring re-entry.
-* 🛡️ **Zero-Revert Safeguards**:
+* 🛡️ **Zero-Revert Safeguards & Scam Token Detection**:
   * Automatically verifies live on-chain token balances immediately prior to transaction construction to eliminate precision mismatches and balance drift errors.
+  * Accurately detects and decodes phantom scam tokens (where contracts spoof fake balances while actual internal balances are 0).
 
 ---
 
@@ -36,9 +39,11 @@ An interactive CLI tool built on **Viem** and **Blockscout Pro API** to batch sw
   Bucket Shop distributes fee rewards across **1 to 20 different assets** (crypto tokens, tokenized stocks) into user wallets. This tool auto-detects all accumulated payout rewards and either sweeps them or liquidates them all into ETH in one pass.
 * 💸 **Portfolio Liquidation**:
   Exit small positions, airdrop dust, or reward tokens across multiple pools into native ETH without manually approving and swapping on separate web UIs.
+* 🔥 **Purging Dead Tokens & Scam Dust**:
+  Clean up wallet bloat by batch burning worthless or dead tokens to `0x000000000000000000000000000000000000dEaD`.
 * 🧹 **Cold Storage & Wallet Migration**:
   Transfer an entire multi-asset portfolio to cold storage or a hardware wallet in seconds instead of transferring tokens one-by-one.
-* 🔥 **Burner Wallet Draining**:
+* ⛽ **Burner Wallet Draining**:
   Sweep all tokens and remaining native gas from temporary addresses to a primary vault with automated gas reserve deduction.
 
 ---
@@ -66,7 +71,7 @@ cp .env.example .env
 
 Open `.env` and fill in:
 * `PRIVATE_KEY`: Your sender wallet private key (starts with `0x`).
-* `DESTINATION_ADDRESS`: The address where you want swept assets sent.
+* `DESTINATION_ADDRESS`: (Optional) Default address where you want swept assets sent.
 * `BLOCKSCOUT_API_KEY`: Your Blockscout Pro API key from [dev.blockscout.com](https://dev.blockscout.com) (**100% Free** — takes 10 seconds to generate, no payment/credit card required).
 
 *(All Robinhood Chain RPC, Chain ID `4663`, and Explorer endpoints are pre-configured by default).*
@@ -78,10 +83,11 @@ npm start
 
 ### 3. Workflow
 1. **Mode Selection**: Choose between `Transfer / Sweep Assets`, `Batch Sell to ETH`, `Sell & Sweep`, or `Burn / Discard to Dead Address`.
-2. **Interactive Selection**: Toggle the assets you want to process using `[Space]`.
-3. **Amount Configuration**: Choose `100% (Max)` or specify exact token quantities.
-4. **Plan Preview & Confirmation**: Review estimated USD values, gas reserve calculations, and execution routes before confirming.
-5. **Execution**: Transactions are signed locally and broadcast sequentially with live hash and explorer links.
+2. **Destination Address**: Enter the target recipient address, confirm the `.env` default with `[Enter]`, or type `"dead"` to burn.
+3. **Interactive Selection**: Toggle the assets you want to process using `[Space]`.
+4. **Amount Configuration & GMGN Verification**: Review the complete contract address and clickable [GMGN.ai](https://gmgn.ai) chart link for each token, then choose `100% (Max)` or specify custom quantities.
+5. **Plan Preview & Confirmation**: Review estimated USD values, gas reserve calculations, and execution routes before confirming.
+6. **Execution**: Transactions are signed locally and broadcast sequentially with live hash and explorer links.
 
 ---
 
