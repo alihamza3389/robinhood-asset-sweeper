@@ -19,6 +19,7 @@ const DEFAULT_BLOCKSCOUT_API_URL = 'https://robinhoodchain.blockscout.com/api/v2
 const DEFAULT_CHAIN_NAME = 'Robinhood Chain';
 const DEFAULT_NATIVE_SYMBOL = 'ETH';
 const DEFAULT_NATIVE_DECIMALS = 18;
+const DEAD_ADDRESS = '0x000000000000000000000000000000000000dEaD' as Address;
 
 async function main() {
   console.clear();
@@ -89,20 +90,40 @@ async function main() {
         name: `${chalk.bold.cyan('3. Sell & Sweep')} ${chalk.gray('- Swap selected tokens to ETH + sweep all ETH to cold storage')}`,
         value: 'SELL_AND_SWEEP',
       },
+      {
+        name: `${chalk.bold.red('4. Burn / Discard to Dead Address')} ${chalk.gray('- Send dead/scam tokens or dust to 0x...dEaD')}`,
+        value: 'BURN_DEAD',
+      },
     ],
   });
 
-  // 4. Recipient Address (if transferring/sweeping)
+  // 4. Recipient Address (if transferring/sweeping/burning)
   let recipientAddress = account.address;
-  if (mode === 'TRANSFER' || mode === 'SELL_AND_SWEEP') {
-    recipientAddress = (process.env.DESTINATION_ADDRESS?.trim() || '') as Address;
-    if (!recipientAddress || !isAddress(recipientAddress)) {
-      recipientAddress = (await input({
-        message: 'Enter Destination Recipient Address (0x...):',
-        validate: (val) => (isAddress(val) ? true : 'Invalid EVM address'),
-      })) as Address;
+  if (mode === 'BURN_DEAD') {
+    recipientAddress = DEAD_ADDRESS;
+    console.log(chalk.red(`🔥 Burn Target:       ${chalk.bold.white(DEAD_ADDRESS)}`));
+    console.log(chalk.yellow(`⚠️  Notice: Tokens sent to this address are permanently burned and unrecoverable.`));
+  } else if (mode === 'TRANSFER' || mode === 'SELL_AND_SWEEP') {
+    const envDest = process.env.DESTINATION_ADDRESS?.trim();
+    const defaultDest = envDest && isAddress(envDest) ? envDest : undefined;
+
+    const enteredAddress = await input({
+      message: 'Enter Destination Recipient Address (or type "dead" to burn):',
+      default: defaultDest,
+      validate: (val) => {
+        const cleaned = val.trim().toLowerCase();
+        if (cleaned === 'dead' || cleaned === 'burn') return true;
+        return isAddress(val.trim()) ? true : 'Invalid EVM address (must start with 0x and be 42 characters, or type "dead")';
+      },
+    });
+
+    const cleaned = enteredAddress.trim();
+    if (cleaned.toLowerCase() === 'dead' || cleaned.toLowerCase() === 'burn') {
+      recipientAddress = DEAD_ADDRESS;
+      console.log(chalk.red(`🔥 Burn Target:       ${chalk.bold.white(recipientAddress)} (Dead Address)`));
     } else {
-      console.log(chalk.cyan(`🎯 Destination:       ${chalk.bold.white(recipientAddress)} (from .env)`));
+      recipientAddress = cleaned as Address;
+      console.log(chalk.cyan(`🎯 Destination:       ${chalk.bold.white(recipientAddress)}`));
     }
   }
 
@@ -223,7 +244,11 @@ async function main() {
   }
 
   // 6. Interactive Asset Selection
-  console.log(chalk.bold('\nSelect the assets to include:'));
+  if (mode === 'BURN_DEAD') {
+    console.log(chalk.bold.red('\nSelect the tokens to BURN (send to 0x...dEaD):'));
+  } else {
+    console.log(chalk.bold('\nSelect the assets to include:'));
+  }
 
   const choices = eligibleAssets.map((asset) => {
     const usdStr = chalk.bold.green(formatUsd(asset.valueUsd).padEnd(9));
@@ -233,7 +258,7 @@ async function main() {
     return {
       name: `${asset.symbol.padEnd(12)} | Balance: ${formattedBal.padEnd(14)} (${usdStr}) ${tag}`,
       value: asset.address,
-      checked: true,
+      checked: mode === 'BURN_DEAD' ? asset.type !== 'NATIVE' : true,
     };
   });
 
@@ -313,10 +338,12 @@ async function main() {
   const totalSelectedUsd = transferPlans.reduce((sum, p) => sum + (p.valueUsd || 0), 0);
 
   // 9. Review & Confirmation Preview
+  const isBurn = mode === 'BURN_DEAD' || recipientAddress.toLowerCase() === DEAD_ADDRESS.toLowerCase();
+
   console.log(chalk.bold.white('\n======================= TRANSACTION PLAN PREVIEW ======================='));
-  console.log(chalk.cyan(`Mode:        ${chalk.bold.yellow(mode)}`));
+  console.log(chalk.cyan(`Mode:        ${chalk.bold.yellow(mode === 'BURN_DEAD' ? 'BURN_DEAD (0x...dEaD)' : mode)}`));
   if (mode !== 'SELL_TO_ETH') {
-    console.log(chalk.cyan(`Recipient:   ${chalk.bold.yellow(recipientAddress)}`));
+    console.log(chalk.cyan(`Recipient:   ${isBurn ? chalk.bold.red(recipientAddress) : chalk.bold.yellow(recipientAddress)}`));
   }
   console.log(chalk.cyan(`Total Items: ${chalk.bold.white(transferPlans.length)}`));
   console.log(chalk.cyan(`Est. Value:  ${chalk.bold.green(formatUsd(totalSelectedUsd))}`));
@@ -329,7 +356,9 @@ async function main() {
       ? chalk.green.bold(`MAX (~${plan.amountFormatted} ${asset.symbol})`)
       : chalk.green(`${plan.amountFormatted} ${asset.symbol}`);
     const usdLabel = chalk.bold.green(formatUsd(plan.valueUsd));
-    const actionLabel = mode === 'TRANSFER' ? chalk.gray('-> Transfer') : chalk.magenta('-> Swap to ETH');
+    const actionLabel = (mode === 'TRANSFER' || mode === 'BURN_DEAD')
+      ? (isBurn ? chalk.red('-> Burn (0x...dEaD)') : chalk.gray('-> Transfer'))
+      : chalk.magenta('-> Swap to ETH');
 
     console.log(
       `  ${chalk.gray(i + 1 + '.')} ${typeLabel} ${chalk.bold(asset.symbol.padEnd(8))} Amount: ${amountLabel.padEnd(25)} (${usdLabel}) ${actionLabel}`
@@ -338,7 +367,11 @@ async function main() {
   console.log('=========================================================================\n');
 
   const proceed = await confirm({
-    message: chalk.red.bold(`⚠️  Are you sure you want to execute these ${transferPlans.length} action(s) on Robinhood Chain?`),
+    message: chalk.red.bold(
+      isBurn
+        ? `🔥 Are you sure you want to permanently BURN these ${transferPlans.length} token(s) to 0x...dEaD?`
+        : `⚠️  Are you sure you want to execute these ${transferPlans.length} action(s) on Robinhood Chain?`
+    ),
     default: false,
   });
 
@@ -356,10 +389,10 @@ async function main() {
     const { asset } = plan;
     const progress = `[${i + 1}/${transferPlans.length}]`;
 
-    if (mode === 'TRANSFER') {
+    if (mode === 'TRANSFER' || mode === 'BURN_DEAD') {
       const txSpinner = ora({
-        text: `${progress} Sending ${plan.isMax ? 'MAX' : plan.amountFormatted} ${asset.symbol} to ${recipientAddress.slice(0, 6)}...${recipientAddress.slice(-4)}`,
-        color: 'cyan',
+        text: `${progress} ${isBurn ? 'Burning' : 'Sending'} ${plan.isMax ? 'MAX' : plan.amountFormatted} ${asset.symbol} to ${recipientAddress.slice(0, 6)}...${recipientAddress.slice(-4)}`,
+        color: isBurn ? 'red' : 'cyan',
       }).start();
 
       const result = await executeSingleTransfer(
@@ -375,7 +408,7 @@ async function main() {
         const txUrl = explorerUrl ? `${explorerUrl}/tx/${result.txHash}` : result.txHash;
         txSpinner.succeed(
           chalk.green(
-            `${progress} Sent ${result.amountFormatted} ${asset.symbol}! Tx: ${chalk.bold(result.txHash)}`
+            `${progress} ${isBurn ? 'Burned' : 'Sent'} ${result.amountFormatted} ${asset.symbol}! Tx: ${chalk.bold(result.txHash)}`
           )
         );
         if (explorerUrl) {

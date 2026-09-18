@@ -12,10 +12,13 @@ An interactive CLI tool built on **Viem** and **Blockscout Pro API** to batch sw
     * **$BUCKET Token**: Liquidated via `BucketRouter` (`0x35f9D5...`).
     * **USDG-routed Stocks** (AAPL, SPCX, NVDA, PLTR, TSLA): Liquidated via `StockRouterUsdg` (`0x716f97...`).
     * **Crypto & Registered Stocks** (POOLS, DOGO, JUGGERNAUT, CASHCAT, USDG, NET, etc.): Liquidated via `StockRouterDirect` (`0xbdA740...`).
-* 🎛️ **3 Flexible Execution Modes**:
-  1. `Transfer / Sweep Assets`: Direct peer-to-peer or cold-storage batch transfer of selected assets.
+* 🎛️ **4 Flexible Execution Modes**:
+  1. `Transfer / Sweep Assets`: Direct peer-to-peer or cold-storage batch transfer of selected assets to any destination.
   2. `Batch Sell to ETH`: Converts selected tokens to ETH and deposits the proceeds directly into your wallet.
   3. `Sell & Sweep`: Sells selected tokens for ETH, consolidates the balance, and sweeps the final remaining ETH to a target destination address.
+  4. `Burn / Discard to Dead Address`: Safely discard dead tokens, worthless meme coins, or scam airdrops by permanently sending them to `0x000000000000000000000000000000000000dEaD`.
+* 🎯 **Dynamic Destination Prompting**:
+  * Automatically prompts for the recipient address when you run the script, pre-filling your `.env` destination as the default. You can also type `"dead"` at the prompt to route directly to the burn address.
 * 🚀 **Parallelized Fast Scanning Engine**:
   * Simultaneous asynchronous discovery queries Blockscout Pro API, official Robinhood stock token registries, and on-chain Uniswap v4 pool states in parallel, bringing startup scan times down to ~1-2 seconds.
 * 📈 **Real-Time On-Chain Pricing & USD Valuations**:
@@ -74,7 +77,7 @@ npm start
 ```
 
 ### 3. Workflow
-1. **Mode Selection**: Choose between `Transfer / Sweep Assets`, `Batch Sell to ETH`, or `Sell & Sweep`.
+1. **Mode Selection**: Choose between `Transfer / Sweep Assets`, `Batch Sell to ETH`, `Sell & Sweep`, or `Burn / Discard to Dead Address`.
 2. **Interactive Selection**: Toggle the assets you want to process using `[Space]`.
 3. **Amount Configuration**: Choose `100% (Max)` or specify exact token quantities.
 4. **Plan Preview & Confirmation**: Review estimated USD values, gas reserve calculations, and execution routes before confirming.

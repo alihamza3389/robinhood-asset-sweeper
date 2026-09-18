@@ -1,6 +1,6 @@
 export type AssetType = 'NATIVE' | 'ERC20';
 export type AssetCategory = 'NATIVE' | 'BUCKET' | 'STOCK' | 'CRYPTO' | 'UNREGISTERED';
-export type OperationMode = 'TRANSFER' | 'SELL_TO_ETH' | 'SELL_AND_SWEEP';
+export type OperationMode = 'TRANSFER' | 'SELL_TO_ETH' | 'SELL_AND_SWEEP' | 'BURN_DEAD';
 
 export interface AssetInfo {
   address: `0x${string}` | 'NATIVE';
