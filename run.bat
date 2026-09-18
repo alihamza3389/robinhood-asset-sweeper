@@ -1,7 +1,7 @@
 @echo off
-title Robinhood Chain Multi-Asset Sweeper & Batch Seller
+title Robinhood Chain Multi-Asset Sweeper and Batch Seller
 echo ================================================================
-echo  Robinhood Chain Multi-Asset Sweeper & Batch Seller
+echo  Robinhood Chain Multi-Asset Sweeper and Batch Seller
 echo ================================================================
 echo.
 
@@ -47,7 +47,7 @@ if not exist node_modules (
 )
 
 :: Launch the application
-echo [2/2] Launching Sweeper & Batch Seller...
+echo [2/2] Launching Sweeper and Batch Seller...
 echo.
 call npm start
 
