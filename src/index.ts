@@ -276,6 +276,16 @@ async function main() {
 
   for (const asset of selectedAssets) {
     const isNative = asset.type === 'NATIVE';
+
+    if (!isNative) {
+      const gmgnUrl = `https://gmgn.ai/robinhood/token/sZ5uzVHs_${asset.address}`;
+      const clickableAddr = `\u001B]8;;${gmgnUrl}\u0007${chalk.cyan.underline(asset.address)}\u001B]8;;\u0007`;
+      console.log(`\n📄 ${chalk.bold.white(asset.symbol)} Contract: ${clickableAddr}`);
+      console.log(chalk.gray(`   🔗 GMGN:     ${gmgnUrl}`));
+    } else {
+      console.log(`\n⛽ ${chalk.bold.yellow('Native Gas Token (ETH)')}`);
+    }
+
     const amountChoice = await select({
       message: `Amount for ${chalk.bold.cyan(asset.symbol)} (Available: ${asset.balanceFormatted} / ${formatUsd(asset.valueUsd)}):`,
       choices: [
