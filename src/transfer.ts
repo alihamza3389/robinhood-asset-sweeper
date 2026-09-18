@@ -254,11 +254,18 @@ export async function executeSingleTransfer(
       };
     }
   } catch (err: any) {
+    const rawError = String(err.message || err.shortMessage || err);
+    let friendlyError = err.shortMessage || err.message || 'Unknown transfer error';
+
+    if (rawError.includes('0xe450d38c') || rawError.includes('ERC20InsufficientBalance')) {
+      friendlyError = 'Phantom spam token (contract returns fake balance, actual balance is 0 and untransferable)';
+    }
+
     return {
       asset,
       amountFormatted: plan.amountFormatted,
       status: 'FAILED',
-      error: err.shortMessage || err.message || 'Unknown transfer error',
+      error: friendlyError,
     };
   }
 }
