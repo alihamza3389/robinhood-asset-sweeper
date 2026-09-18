@@ -63,7 +63,18 @@ An interactive CLI tool built on **Viem** and **Blockscout Pro API** to batch sw
 
 ## 🚀 Quick Start
 
-### 1. Configure Environment
+> 📘 **New to coding or terminal tools?** Check out the step-by-step **[Beginner's Setup Guide (Windows & Linux)](./GUIDE.md)** for a complete, zero-code walkthrough!
+
+### ⚡ 1-Click Launchers (Recommended)
+
+* **Windows**: Simply double-click **`run.bat`** (automatically checks Node.js, sets up `.env`, installs packages, and launches the interactive tool).
+* **Linux / macOS**: Run **`./run.sh`** in your terminal.
+
+---
+
+### 💻 Manual Setup
+
+#### 1. Configure Environment
 Copy `.env.example` to `.env`:
 ```bash
 cp .env.example .env
@@ -76,8 +87,9 @@ Open `.env` and fill in:
 
 *(All Robinhood Chain RPC, Chain ID `4663`, and Explorer endpoints are pre-configured by default).*
 
-### 2. Run the Tool
+#### 2. Install & Run
 ```bash
+npm install
 npm start
 ```
 
