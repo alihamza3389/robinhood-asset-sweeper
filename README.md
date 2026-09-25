@@ -197,6 +197,10 @@ Some scam tokens show a balance that can't actually be moved. The tool spots thi
 **"not confirmed within 3 minutes"**
 The network was slow. Open the transaction link to see if it went through **before** running the tool again.
 
+**How do I update to a new version?**
+If you used git: run `git pull` in the folder. If you downloaded a ZIP: download the new one from the [Releases page](https://github.com/alihamza3389/robinhood-asset-sweeper/releases/latest) and extract it. Your saved key and settings are two files in the old folder: **`wallet.keystore.json`** and **`.env`** (plus `custom-tokens.json` if you added tokens by hand). Copy them into the new folder and everything carries over, password included. Or skip that and just run the setup wizard again.
+> On Windows, `.env` may look like a file with no name. If you can't see it, turn on **View → Show → Hidden items** in File Explorer.
+
 **I want to start over**
 Use `--reset` (see Commands). It shows what's saved and lets you pick what to remove. It never touches your wallet or funds.
 
