@@ -1,16 +1,40 @@
+import os from 'node:os';
 import chalk from 'chalk';
-import isUnicodeSupported from 'is-unicode-supported';
 import stringWidth from 'string-width';
 import { VERSION } from '../constants.js';
 
-/** Old Windows consoles can't draw emoji or box lines; fall back to plain ASCII there. */
-export const fancy = isUnicodeSupported();
+/**
+ * Can this terminal draw emoji and rounded boxes? Old Windows 10 consoles can't, so they get plain ASCII.
+ * Windows 11 opens CMD and PowerShell in Windows Terminal, which can, but it doesn't always set the
+ * WT_SESSION variable, so Windows 11 is treated as capable too.
+ * SWEEPER_PLAIN=1 forces the plain style if anything ever looks garbled.
+ */
+export function detectFancy(env = process.env, platform = process.platform, release = os.release()): boolean {
+  if (env.SWEEPER_PLAIN === '1') return false;
+  if (platform !== 'win32') return env.TERM !== 'linux'; // the bare Linux console lacks the glyphs
+  const build = Number(release.split('.')[2]);
+  if (Number.isFinite(build) && build >= 22000) return true; // Windows 11
+  // Windows 10: only modern terminals that announce themselves.
+  return Boolean(
+    env.WT_SESSION ||
+      env.TERMINUS_SUBLIME ||
+      env.ConEmuTask === '{cmd::Cmder}' ||
+      env.TERM_PROGRAM === 'Terminus-Sublime' ||
+      env.TERM_PROGRAM === 'vscode' ||
+      env.TERM === 'xterm-256color' ||
+      env.TERM === 'alacritty' ||
+      env.TERMINAL_EMULATOR === 'JetBrains-JediTerm'
+  );
+}
+
+export const fancy = detectFancy();
 
 export const c = {
   brand: chalk.hex('#00C805'),
   brandBold: chalk.bold.hex('#00C805'),
-  badge: chalk.bgHex('#00C805').black.bold,
-  warnBadge: chalk.bgYellow.black.bold,
+  // Exact black, not palette black: many terminals draw bold palette black as grey.
+  badge: chalk.bgHex('#00C805').hex('#000000').bold,
+  warnBadge: chalk.bgYellow.hex('#000000').bold,
   dangerBadge: chalk.bgRed.white.bold,
   dim: chalk.gray,
   money: chalk.hex('#7CFC9A'),

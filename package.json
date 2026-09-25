@@ -24,7 +24,6 @@
     "@inquirer/prompts": "^7.3.2",
     "chalk": "^5.4.1",
     "dotenv": "^16.4.7",
-    "is-unicode-supported": "^2.1.0",
     "ora": "^8.2.0",
     "string-width": "^7.2.0",
     "viem": "^2.23.2"

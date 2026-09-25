@@ -8,6 +8,7 @@ import { parseRobinhoodAssets, pickRoute } from '../src/scan/registry.js';
 import { ethPerBucketFromSqrtPrice } from '../src/scan/prices.js';
 import { formatAmount, formatUsd } from '../src/ui/format.js';
 import { cleanText } from '../src/scan/wallet.js';
+import { detectFancy } from '../src/ui/theme.js';
 import { encodePath } from '../src/scan/uniswap.js';
 import { decryptKey, encryptKey, KeystoreV3, keystoreBackups, saveKeystore, WrongPasswordError } from '../src/keystore.js';
 import fs from 'node:fs';
@@ -216,4 +217,11 @@ test('Blockscout: a failed later page keeps earlier results; a rejected key thro
 
 test('WETH is sold by unwrapping', () => {
   assert.equal(pickRoute(getAddress('0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73'), { usdg: false, treasury: false }), 'UNWRAP');
+});
+
+test('terminal style: Windows 11 gets the full style, Windows 10 without WT falls back, override wins', () => {
+  assert.equal(detectFancy({}, 'win32', '10.0.22631'), true);
+  assert.equal(detectFancy({}, 'win32', '10.0.19045'), false);
+  assert.equal(detectFancy({ WT_SESSION: 'x' }, 'win32', '10.0.19045'), true);
+  assert.equal(detectFancy({ SWEEPER_PLAIN: '1' }, 'win32', '10.0.22631'), false);
 });

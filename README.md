@@ -165,6 +165,9 @@ Node.js isn't installed, or the window was open before you installed it. Install
 **PowerShell says "running scripts is disabled" or "not digitally signed"**
 Double-click `run.bat` instead. Or run `powershell -ExecutionPolicy Bypass -File .\run.ps1`.
 
+**The boxes or symbols look garbled**
+Your terminal can't draw emoji. Start the tool in plain mode: in CMD run `set SWEEPER_PLAIN=1` and then `run.bat` (Mac/Linux: `SWEEPER_PLAIN=1 ./run.sh`).
+
 **How do I paste into the window?**
 Right-click, or press Ctrl+V (Ctrl+Shift+V on Linux). Your private key stays hidden as `****` while you paste it. That's normal.
 
