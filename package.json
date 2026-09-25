@@ -1,6 +1,6 @@
 {
   "name": "robinhood-chain-asset-sweeper",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "private": true,
   "description": "Send, sell or clean up the tokens in a Robinhood Chain wallet from your terminal, with simulation-first safety checks",
   "license": "MIT",
