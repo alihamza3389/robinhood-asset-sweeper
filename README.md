@@ -201,6 +201,7 @@ This tool is free. If it saved you time or money, tips are appreciated:
 - **EVM** (Ethereum, Base, Arbitrum, Robinhood Chain, Arc): `0xcDcC4656293424544F32BfA58089e982B9624866`
 - **Solana:** `94TmHVSd6ZWc9cAWKysQXQ5hGaymBvkQVEgaTtLVyHt8`
 - ⚡ **Trade on GMGN:** instant fills, multi-chain support (Robinhood Chain, Solana, Base, BSC, Ethereum), live charts and smart-money tracking. Sign up with [this referral link](https://gmgn.ai/r/sZ5uzVHs?chain=robinhood) to support the project. The chart links in the tool use the same referral.
+- 👀 **New to GMGN?** Get instant access to the wallets of major KOLs, influencers and top traders on Robinhood Chain to follow: [rh-wallets.vercel.app](https://rh-wallets.vercel.app/)
 
 ---
 

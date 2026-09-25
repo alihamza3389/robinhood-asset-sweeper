@@ -92,6 +92,8 @@ export const API = {
 /** GMGN referral code. Also embedded in the per-token chart links below. */
 export const GMGN_REF = 'sZ5uzVHs';
 export const GMGN_REFERRAL_URL = `https://gmgn.ai/r/${GMGN_REF}?chain=robinhood`;
+/** Curated Robinhood Chain wallets (KOLs, influencers, notable traders) to follow on GMGN. */
+export const RH_WALLETS_URL = 'https://rh-wallets.vercel.app/';
 export const gmgnTokenUrl = (token: string) => `https://gmgn.ai/robinhood/token/${GMGN_REF}_${token}`;
 
 export const DONATIONS = {

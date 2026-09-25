@@ -1,6 +1,6 @@
 import ora from 'ora';
 import { Address, formatUnits } from 'viem';
-import { DEAD_ADDRESS, DONATIONS, GMGN_REFERRAL_URL, gmgnTokenUrl } from '../constants.js';
+import { DEAD_ADDRESS, DONATIONS, GMGN_REFERRAL_URL, RH_WALLETS_URL, gmgnTokenUrl } from '../constants.js';
 import { Asset, ActionResult, Config, NativeAsset, OperationMode, PlanItem } from '../types.js';
 import { formatAmount, formatUsd, usdValue } from './format.js';
 import { box, c, emoji, padEnd, padStart, sym, width } from './theme.js';
@@ -190,6 +190,10 @@ export function printDonations() {
           c.dim('Base, BSC, Ethereum), live charts and smart-money tracking.'),
           c.dim('Sign up with this link to support the project:'),
           c.addr.bold(GMGN_REFERRAL_URL),
+          '',
+          c.dim('New to GMGN? Get instant access to the wallets of major KOLs,'),
+          c.dim('influencers and top traders on Robinhood Chain to follow:'),
+          c.addr.bold(RH_WALLETS_URL),
         ],
         { title: `${emoji('💚')}Support this project` }
       ) +
