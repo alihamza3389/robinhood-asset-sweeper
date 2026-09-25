@@ -1,17 +1,32 @@
 {
-  "name": "robinhood-evm-asset-sweeper",
-  "version": "2.0.0",
-  "description": "Multi-asset EVM batch transfer and DEX seller CLI with Blockscout Pro API integration",
+  "name": "robinhood-chain-asset-sweeper",
+  "version": "3.0.0",
+  "private": true,
+  "description": "Send, sell or clean up the tokens in a Robinhood Chain wallet from your terminal, with simulation-first safety checks",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alihamza3389/robinhood-asset-sweeper.git"
+  },
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "tsx src/index.ts",
-    "build": "tsc"
+    "setup": "tsx src/index.ts --setup",
+    "reset": "tsx src/index.ts --reset",
+    "dry-run": "tsx src/index.ts --dry-run",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
     "@inquirer/prompts": "^7.3.2",
     "chalk": "^5.4.1",
     "dotenv": "^16.4.7",
+    "is-unicode-supported": "^2.1.0",
     "ora": "^8.2.0",
+    "string-width": "^7.2.0",
     "viem": "^2.23.2"
   },
   "devDependencies": {

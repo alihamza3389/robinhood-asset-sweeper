@@ -1,529 +1,331 @@
-import 'dotenv/config';
-import chalk from 'chalk';
 import ora from 'ora';
-import { isAddress, parseUnits, formatUnits, Address } from 'viem';
-import { checkbox, input, select, confirm } from '@inquirer/prompts';
-import { AssetInfo, AssetTransferPlan, ExecutionResult, NetworkConfig, OperationMode } from './types.js';
-import { fetchTokensFromBlockscout } from './blockscout.js';
-import { createClients, fetchNativeAsset, fetchOnchainErc20, executeSingleTransfer } from './transfer.js';
-import { fetchLivePrices, enrichAssetsWithPrices, formatUsd, formatBalance } from './prices.js';
-import { executeSellToken } from './sell.js';
-import { classifyAsset, loadOfficialRobinhoodStocks } from './registry.js';
-import { loadSavedCustomTokens, saveCustomToken } from './customTokens.js';
+import { Address, getAddress, isAddress } from 'viem';
+import { confirm, input } from '@inquirer/prompts';
+import { HELP, loadConfig, parseCli } from './config.js';
+import { askBlockscoutKey, envExists, runSetupWizard } from './setup.js';
+import { runReset } from './reset.js';
+import { createClients } from './chain.js';
+import { CONTRACTS, DEAD_ADDRESS, FALLBACK_STOCK_TOKENS } from './constants.js';
+import { Asset, ActionResult, OperationMode, TokenAsset } from './types.js';
+import { loadCustomTokens, saveCustomToken } from './scan/customTokens.js';
+import { fetchRobinhoodStocks } from './scan/registry.js';
+import { fetchPrices, PriceBook } from './scan/prices.js';
+import { addUniswapRoutes, readTokens, scanWallet, ScanResult } from './scan/wallet.js';
+import { BlockscoutKeyError } from './scan/blockscout.js';
+import { ActionContext, describeError } from './actions/context.js';
+import { sendNative, transferToken } from './actions/transfer.js';
+import { sellToken } from './actions/sell.js';
+import { formatAmount, usdValue } from './ui/format.js';
+import { banner, box, c, emoji, promptTheme, step, sym, tip } from './ui/theme.js';
+import { printDonations, printReview, printSummary, printTokenList, printWalletCard, runStep } from './ui/screens.js';
+import {
+  confirmBurn,
+  confirmPlan,
+  isTokenAsset,
+  promptAmounts,
+  promptAssets,
+  promptDestination,
+  promptManualTokens,
+  promptMode,
+} from './ui/prompts.js';
 
-// Defaults for Robinhood Chain Mainnet (Arbitrum Orbit L2)
-const DEFAULT_CHAIN_ID = 4663;
-const DEFAULT_RPC_URL = 'https://rpc.mainnet.chain.robinhood.com';
-const DEFAULT_EXPLORER_URL = 'https://robinhoodchain.blockscout.com';
-const DEFAULT_BLOCKSCOUT_API_URL = 'https://robinhoodchain.blockscout.com/api/v2';
-const DEFAULT_CHAIN_NAME = 'Robinhood Chain';
-const DEFAULT_NATIVE_SYMBOL = 'ETH';
-const DEFAULT_NATIVE_DECIMALS = 18;
-const DEAD_ADDRESS = '0x000000000000000000000000000000000000dEaD' as Address;
+const STEPS = 5;
+
+/** Words used while running, when done, and in practice mode. */
+const VERBS: Record<OperationMode, [string, string, string]> = {
+  TRANSFER: ['Sending', 'Sent', 'Would send'],
+  SELL: ['Selling', 'Sold', 'Would sell'],
+  SELL_AND_SWEEP: ['Selling', 'Sold', 'Would sell'],
+  BURN: ['Burning', 'Burned', 'Would burn'],
+};
+
+function withPrice<T extends Asset>(asset: T, prices: PriceBook): T {
+  const priceUsd = asset.kind === 'native' ? prices.ethUsd : prices.tokens.get(asset.address.toLowerCase());
+  return { ...asset, priceUsd };
+}
+
+/** Which assets each mode may act on. */
+function eligibleFor(mode: OperationMode, assets: Asset[]): { eligible: Asset[]; excluded: Asset[] } {
+  const ok = (a: Asset) => {
+    switch (mode) {
+      case 'TRANSFER':
+        return true;
+      case 'BURN':
+        return a.kind === 'erc20';
+      case 'SELL':
+      case 'SELL_AND_SWEEP':
+        return a.kind === 'erc20' && a.route !== 'NONE';
+    }
+  };
+  return { eligible: assets.filter(ok), excluded: assets.filter((a) => !ok(a) && a.kind === 'erc20') };
+}
+
+/** Used when .env has no key (e.g. it was created by hand). The wizard is the normal path. */
+async function promptBlockscoutKey(chainId: number): Promise<string> {
+  console.log(
+    '\n' +
+      box(
+        [
+          'A free Blockscout API key is needed to find your tokens.',
+          `Get one in about 30 seconds at ${c.addr('https://dev.blockscout.com')}`,
+          c.dim('Run "npm run setup" afterwards to save it.'),
+        ],
+        { title: `${emoji('🔑')}One more thing`, color: c.warn }
+      )
+  );
+  return askBlockscoutKey(chainId);
+}
 
 async function main() {
-  console.clear();
-  console.log(chalk.bold.hex('#00C805')(`
-╔══════════════════════════════════════════════════════════════════════════╗
-║              ROBINHOOD CHAIN MULTI-ASSET SWEEPER & SELLER               ║
-║         (Chain ID: 4663 • Real-Time USD Valuations • Viem Engine)        ║
-╚══════════════════════════════════════════════════════════════════════════╝
-`));
-
-  // 1. Resolve Configuration
-  let privateKey = process.env.PRIVATE_KEY?.trim();
-  if (!privateKey || !privateKey.startsWith('0x') || privateKey.length !== 66) {
-    console.log(chalk.yellow('Private key not found in .env'));
-    privateKey = await input({
-      message: 'Enter your Sender Private Key (0x...):',
-      validate: (val) =>
-        val.startsWith('0x') && val.length === 66 ? true : 'Must be a 66-character hex string starting with 0x',
-    });
+  const cli = parseCli();
+  if (cli.help) {
+    console.log(HELP);
+    printDonations();
+    return;
+  }
+  // Start on a clean screen (also hides npm's own startup lines).
+  if (process.stdout.isTTY) console.clear();
+  banner(cli.dryRun);
+  if (cli.reset) {
+    await runReset();
+    return;
+  }
+  if (cli.setup || (!envExists() && !process.env.PRIVATE_KEY)) {
+    await runSetupWizard();
+  }
+  const config = await loadConfig(cli);
+  if (!config.blockscoutApiKey) {
+    config.blockscoutApiKey = await promptBlockscoutKey(config.chainId);
   }
 
-  const rpcUrl = process.env.RPC_URL?.trim() || DEFAULT_RPC_URL;
-  const chainId = parseInt(process.env.CHAIN_ID || '', 10) || DEFAULT_CHAIN_ID;
-  const chainName = process.env.CHAIN_NAME || DEFAULT_CHAIN_NAME;
-  const nativeSymbol = process.env.NATIVE_CURRENCY_SYMBOL || DEFAULT_NATIVE_SYMBOL;
-  const nativeDecimals = parseInt(process.env.NATIVE_CURRENCY_DECIMALS || '', 10) || DEFAULT_NATIVE_DECIMALS;
-  const explorerUrl = (process.env.EXPLORER_URL || DEFAULT_EXPLORER_URL).replace(/\/+$/, '');
-  const blockscoutApiUrl = process.env.BLOCKSCOUT_API_URL?.trim() || DEFAULT_BLOCKSCOUT_API_URL;
-  const blockscoutApiKey = process.env.BLOCKSCOUT_API_KEY?.trim() || '';
+  const { account, publicClient, walletClient } = createClients(config);
+  const sender = account.address;
+  console.log(`\n${c.dim('Wallet')}  ${c.addr(sender)}  ${c.dim(`on ${config.chainName}`)}`);
 
-  const networkConfig: NetworkConfig = {
-    rpcUrl,
-    chainId,
-    chainName,
-    nativeCurrency: {
-      name: nativeSymbol,
-      symbol: nativeSymbol,
-      decimals: nativeDecimals,
-    },
-    explorerUrl,
-    blockscoutApiUrl,
-    blockscoutApiKey,
-  };
-
-  // 2. Initialize Viem Clients
-  const { account, publicClient, walletClient } = createClients(
-    networkConfig,
-    privateKey as `0x${string}`
-  );
-
-  console.log(chalk.cyan(`🔑 Sender Wallet:     ${chalk.bold.white(account.address)}`));
-  console.log(chalk.cyan(`🌐 Network:           ${chalk.bold.white(chainName)} (Chain ID: ${chainId})`));
-  console.log(chalk.cyan(`⚡ RPC URL:           ${chalk.bold.white(rpcUrl)}`));
-
-  // 3. Mode Selection
-  const mode = await select<OperationMode>({
-    message: chalk.bold.white('Select operation mode:'),
-    choices: [
-      {
-        name: `${chalk.bold.green('1. Transfer / Sweep Assets')} ${chalk.gray('- Transfer selected tokens/ETH to 1 address')}`,
-        value: 'TRANSFER',
-      },
-      {
-        name: `${chalk.bold.yellow('2. Batch Sell to ETH')} ${chalk.gray('- Swap selected reward tokens directly to ETH in your wallet')}`,
-        value: 'SELL_TO_ETH',
-      },
-      {
-        name: `${chalk.bold.cyan('3. Sell & Sweep')} ${chalk.gray('- Swap selected tokens to ETH + sweep all ETH to cold storage')}`,
-        value: 'SELL_AND_SWEEP',
-      },
-      {
-        name: `${chalk.bold.red('4. Burn / Discard to Dead Address')} ${chalk.gray('- Send dead/scam tokens or dust to 0x...dEaD')}`,
-        value: 'BURN_DEAD',
-      },
-    ],
-  });
-
-  // 4. Recipient Address (if transferring/sweeping/burning)
-  let recipientAddress = account.address;
-  if (mode === 'BURN_DEAD') {
-    recipientAddress = DEAD_ADDRESS;
-    console.log(chalk.red(`🔥 Burn Target:       ${chalk.bold.white(DEAD_ADDRESS)}`));
-    console.log(chalk.yellow(`⚠️  Notice: Tokens sent to this address are permanently burned and unrecoverable.`));
-  } else if (mode === 'TRANSFER' || mode === 'SELL_AND_SWEEP') {
-    const envDest = process.env.DESTINATION_ADDRESS?.trim();
-    const defaultDest = envDest && isAddress(envDest) ? envDest : undefined;
-
-    const enteredAddress = await input({
-      message: 'Enter Destination Recipient Address (or type "dead" to burn):',
-      default: defaultDest,
-      validate: (val) => {
-        const cleaned = val.trim().toLowerCase();
-        if (cleaned === 'dead' || cleaned === 'burn') return true;
-        return isAddress(val.trim()) ? true : 'Invalid EVM address (must start with 0x and be 42 characters, or type "dead")';
-      },
-    });
-
-    const cleaned = enteredAddress.trim();
-    if (cleaned.toLowerCase() === 'dead' || cleaned.toLowerCase() === 'burn') {
-      recipientAddress = DEAD_ADDRESS;
-      console.log(chalk.red(`🔥 Burn Target:       ${chalk.bold.white(recipientAddress)} (Dead Address)`));
-    } else {
-      recipientAddress = cleaned as Address;
-      console.log(chalk.cyan(`🎯 Destination:       ${chalk.bold.white(recipientAddress)}`));
-    }
+  const rpcChainId = await publicClient.getChainId();
+  if (rpcChainId !== config.chainId) {
+    throw new Error(`The RPC at ${config.rpcUrl} is on chain ${rpcChainId}, not ${config.chainId}. Stopping to keep your funds safe.`);
   }
 
-  // 5. Fetch Assets & Live USD Prices (Parallelized for Speed)
-  const spinner = ora({ text: 'Scanning wallet & live market data...', color: 'green' }).start();
-
-  const savedCustomTokens = loadSavedCustomTokens();
-
-  const [_, priceData, nativeAssetResult, blockscoutTokensResult, customTokensResult] = await Promise.all([
-    loadOfficialRobinhoodStocks().catch(() => {}),
-    fetchLivePrices(publicClient).catch(() => ({ tokenPrices: {}, ethPriceUsd: 2450 })),
-    fetchNativeAsset(publicClient, account.address, nativeSymbol, nativeDecimals).catch(() => null),
-    fetchTokensFromBlockscout(blockscoutApiUrl, account.address, blockscoutApiKey, chainId).catch(() => []),
-    Promise.all(savedCustomTokens.map((addr) => fetchOnchainErc20(publicClient, addr, account.address).catch(() => null))),
-  ]);
-
-  let allAssets: AssetInfo[] = [];
-
-  if (nativeAssetResult && nativeAssetResult.balanceRaw > 0n) {
-    allAssets.push(nativeAssetResult);
+  // Step 1: what to do, and where to
+  step(1, STEPS, 'Choose what to do', 'Use the arrow keys, then press Enter.');
+  const choice = await promptMode();
+  if (choice === 'QUIT') {
+    console.log(c.dim('\nBye! Nothing was changed.'));
+    return;
   }
-
-  for (const t of blockscoutTokensResult) {
-    if (!allAssets.some((a) => a.address.toLowerCase() === t.address.toLowerCase())) {
-      allAssets.push(t);
-    }
-  }
-
-  for (const ct of customTokensResult) {
-    if (ct && ct.balanceRaw > 0n && !allAssets.some((a) => a.address.toLowerCase() === ct.address.toLowerCase())) {
-      allAssets.push(ct);
-    }
-  }
-
-  // Classify all assets in parallel
-  allAssets = await Promise.all(
-    allAssets.map(async (asset) => {
-      if (asset.type === 'NATIVE') return asset;
-      const classification = await classifyAsset(asset.address, publicClient);
-      return {
-        ...asset,
-        category: classification.category,
-        isSellable: classification.isSellable,
-      };
-    })
-  );
-
-  // Enrich with USD pricing
-  const { tokenPrices, ethPriceUsd } = priceData;
-  allAssets = enrichAssetsWithPrices(allAssets, tokenPrices, ethPriceUsd);
-
-  const totalWalletUsd = allAssets.reduce((sum, a) => sum + (a.valueUsd || 0), 0);
-
-  spinner.succeed(
-    `Scan complete! Found ${allAssets.length} asset(s). Estimated Total: ${chalk.bold.green(formatUsd(totalWalletUsd))} (ETH: ${formatUsd(ethPriceUsd)})`
-  );
-
-  // Optional manual token addition
-  const addManual = await confirm({
-    message: 'Would you like to manually add any specific ERC-20 token contract address?',
-    default: false,
-  });
-
-  if (addManual) {
-    let adding = true;
-    while (adding) {
-      const customTokenAddr = await input({
-        message: 'Enter ERC-20 Token Contract Address (0x...):',
-        validate: (val) => (isAddress(val) ? true : 'Invalid contract address'),
-      });
-
-      const tokenSpin = ora('Querying token info on Robinhood Chain...').start();
-      let customAsset = await fetchOnchainErc20(
-        publicClient,
-        customTokenAddr as `0x${string}`,
-        account.address
-      );
-
-      if (customAsset) {
-        saveCustomToken(customTokenAddr as Address);
-        customAsset = enrichAssetsWithPrices([customAsset], tokenPrices, ethPriceUsd)[0];
-        tokenSpin.succeed(
-          `Found ${customAsset.name} (${customAsset.symbol}) - Balance: ${customAsset.balanceFormatted} (${formatUsd(customAsset.valueUsd)}) [Saved for future runs]`
-        );
-        if (!allAssets.some((a) => a.address.toLowerCase() === customAsset!.address.toLowerCase())) {
-          allAssets.push(customAsset);
-        }
-      } else {
-        tokenSpin.fail('Could not query token at that address.');
+  const mode: OperationMode = choice;
+  let destination: Address | undefined;
+  if (mode === 'TRANSFER' || mode === 'SELL_AND_SWEEP') {
+    tip('Double-check the address. Crypto sent to the wrong address cannot be recovered.');
+    destination = await promptDestination(sender, config.defaultDestination);
+    if (destination !== config.defaultDestination) {
+      // Guards against clipboard-hijacking malware that swaps a pasted address for a lookalike.
+      console.log(`\n  ${c.dim('You entered')}  ${c.warn.bold(destination)}`);
+      const tail = await input({ message: 'To confirm, type the LAST 4 characters of that address:', theme: promptTheme });
+      if (tail.trim().toLowerCase() !== destination.slice(-4).toLowerCase()) {
+        console.log(c.danger(`\n${sym.fail} Those don't match, so I stopped. Nothing was sent. Please start again.`));
+        return;
       }
-
-      adding = await confirm({ message: 'Add another token?', default: false });
     }
-  }
-
-  if (allAssets.length === 0) {
-    console.log(chalk.red('\nNo assets with non-zero balance were found in this wallet on Robinhood Chain.'));
-    process.exit(0);
-  }
-
-  // Filter eligible assets based on mode
-  let eligibleAssets = allAssets;
-  if (mode === 'SELL_TO_ETH' || mode === 'SELL_AND_SWEEP') {
-    const unregTokens = allAssets.filter((a) => !a.isSellable && a.type !== 'NATIVE');
-    if (unregTokens.length > 0) {
+    const code = await publicClient.getCode({ address: destination });
+    if (code && code !== '0x') {
       console.log(
-        chalk.yellow(
-          `\nℹ Note: ${unregTokens.length} unregistered token(s) (${unregTokens.map((t) => t.symbol).join(', ')}) cannot be sold on DEX and are excluded from the sell list.`
+        '\n' +
+          box(
+            [
+              'This address is a smart contract, not a normal wallet.',
+              'Only continue if you know it can receive these tokens',
+              '(for example an exchange deposit address).',
+            ],
+            { title: `${sym.warn} Heads up`, color: c.warn }
+          )
+      );
+      if (!(await confirm({ message: 'Continue anyway?', default: false, theme: promptTheme }))) return;
+    }
+  } else if (mode === 'BURN') {
+    destination = DEAD_ADDRESS;
+  }
+
+  // Step 2: scan. Blockscout lists the tokens, the chain confirms balances.
+  step(2, STEPS, 'Looking through your wallet');
+  const spinner = ora({ text: 'Finding your tokens and prices…', discardStdin: false }).start();
+  let scan: ScanResult;
+  let stocks: Set<string>;
+  let prices: PriceBook;
+  try {
+    [stocks, prices] = await Promise.all([
+      fetchRobinhoodStocks(config.chainId),
+      fetchPrices(publicClient, { chainId: config.chainId, apiKey: config.blockscoutApiKey }),
+    ]);
+    // Checked on-chain as well as via Blockscout, so an indexing gap can never hide these.
+    const knownTokens = [
+      ...loadCustomTokens(),
+      ...[...stocks, ...FALLBACK_STOCK_TOKENS, ...prices.tokens.keys(), CONTRACTS.BUCKET_TOKEN]
+        .filter((a) => isAddress(a, { strict: false }))
+        .map((a) => getAddress(a)),
+    ];
+    scan = await scanWallet({ publicClient, owner: sender, config, apiKey: config.blockscoutApiKey, knownTokens });
+  } catch (err) {
+    spinner.stopAndPersist({ symbol: c.danger(sym.fail), text: err instanceof BlockscoutKeyError ? err.message : `Could not read the wallet: ${describeError(err)}` });
+    return;
+  }
+  spinner.stop();
+  // Blockscout prices fill any gaps in the Bucket feed.
+  for (const [addr, usd] of scan.indexerPrices) if (!prices.tokens.has(addr)) prices.tokens.set(addr, usd);
+  const label = (t: TokenAsset): TokenAsset => ({
+    ...t,
+    flags: { ...t.flags, robinhoodStock: stocks.has(t.address.toLowerCase()) },
+  });
+
+  let assets: Asset[] = [
+    ...(scan.native.balance > 0n ? [withPrice(scan.native, prices)] : []),
+    ...scan.tokens.map((t) => withPrice(label(t), prices)),
+  ];
+  assets = assets.sort((a, b) => (usdValue(b) ?? -1) - (usdValue(a) ?? -1));
+  printWalletCard(sender, scan.native, assets, prices.ethUsd);
+  for (const w of scan.warnings) console.log(c.warn(`  ${sym.warn} ${w}`));
+  printTokenList(assets);
+
+  // Manual additions: each is checked and saved right away (only real tokens are saved),
+  // and saved tokens are checked on-chain on every future run.
+  await promptManualTokens(async (addr) => {
+    const [token] = await addUniswapRoutes(publicClient, await readTokens(publicClient, sender, [addr], stocks));
+    if (!token) {
+      console.log(c.danger(`  ${sym.fail} ${addr} is not a token contract, so it was not added.`));
+      return;
+    }
+    saveCustomToken(token.address);
+    if (assets.some((a) => a.kind === 'erc20' && a.address === token.address)) {
+      console.log(c.dim(`  ${token.symbol} is already in the list. Saved, so it's always checked from now on.`));
+    } else if (token.balance === 0n) {
+      console.log(c.dim(`  ${token.symbol}: you hold none right now. Saved, and it will be checked on future runs.`));
+    } else {
+      assets.push(withPrice(label(token), prices));
+      console.log(c.brand(`  ${sym.ok} Added ${token.symbol} (${formatAmount(token.balance, token.decimals)}). It will be remembered.`));
+    }
+  });
+
+  assets = assets.sort((a, b) => (usdValue(b) ?? -1) - (usdValue(a) ?? -1));
+  const { eligible, excluded } = eligibleFor(mode, assets);
+  if (eligible.length === 0) {
+    const why =
+      mode === 'SELL' || mode === 'SELL_AND_SWEEP'
+        ? 'None of your tokens can be sold through the Robinhood Chain routers this tool uses.'
+        : mode === 'BURN'
+          ? 'There are no tokens in this wallet to burn.'
+          : 'This wallet is empty.';
+    console.log('\n' + box([why], { title: 'Nothing to do', color: c.warn }));
+    return;
+  }
+  if (scan.native.balance === 0n && !config.dryRun) {
+    console.log(
+      '\n' +
+        box(
+          [
+            'Every transaction needs a tiny amount of ETH on Robinhood Chain',
+            'to pay the network fee, and this wallet has none.',
+            '',
+            'Send a little ETH (a dollar or two is plenty) to:',
+            c.addr.bold(sender),
+            'then start the tool again.',
+          ],
+          { title: `${emoji('⛽')}No ETH for fees`, color: c.danger }
+        )
+    );
+    return;
+  }
+
+  // Step 3: pick tokens and amounts
+  step(
+    3,
+    STEPS,
+    mode === 'BURN' ? 'Pick the spam tokens' : 'Pick your tokens',
+    mode === 'BURN' ? 'Tokens flagged as likely spam are already ticked.' : undefined
+  );
+  if (excluded.length && (mode === 'SELL' || mode === 'SELL_AND_SWEEP')) {
+    tip(`Not listed because they can't be sold here: ${excluded.map((a) => a.symbol).join(', ')}`);
+  }
+  const selected = await promptAssets(mode, eligible);
+  const plan = await promptAmounts(selected);
+  // Tokens first; native ETH last so fees for the token transfers are still available.
+  plan.sort((a, b) => Number(a.asset.kind === 'native') - Number(b.asset.kind === 'native'));
+
+  // Step 4: review
+  step(4, STEPS, 'Review', 'Nothing has been sent yet.');
+  printReview(mode, plan, mode === 'SELL' ? undefined : destination, config);
+  const proceed = mode === 'BURN' && !config.dryRun ? await confirmBurn(plan.length) : await confirmPlan(config.dryRun);
+  if (!proceed) {
+    console.log(c.dim('\nCancelled. Nothing was sent.'));
+    return;
+  }
+
+  // Step 5: go
+  step(
+    5,
+    STEPS,
+    config.dryRun ? 'Simulating' : 'Sending',
+    config.dryRun ? undefined : 'Please keep this window open until it finishes.'
+  );
+  const ctx: ActionContext = { publicClient, walletClient, owner: sender, dryRun: config.dryRun };
+  const results: ActionResult[] = [];
+  const [doing, done, would] = VERBS[mode];
+  const n = plan.length + (mode === 'SELL_AND_SWEEP' ? 1 : 0);
+
+  for (const [i, { asset, amount, max }] of plan.entries()) {
+    const labels = { doing: `${c.dim(`[${i + 1}/${n}]`)} ${doing} ${asset.symbol}…`, done, would };
+    if (mode === 'SELL' || mode === 'SELL_AND_SWEEP') {
+      if (!isTokenAsset(asset)) continue;
+      results.push(
+        await runStep(
+          labels,
+          (onStatus) =>
+            sellToken({ ...ctx, onStatus }, asset, amount, max, {
+              slippagePercent: config.slippagePercent,
+              maxPriceImpactPercent: config.maxPriceImpactPercent,
+              ethPerToken: asset.priceUsd && prices.ethUsd ? asset.priceUsd / prices.ethUsd : undefined,
+            }),
+          config.explorerUrl
+        )
+      );
+    } else {
+      results.push(
+        await runStep(
+          labels,
+          (onStatus) =>
+            asset.kind === 'native'
+              ? sendNative({ ...ctx, onStatus }, asset, destination!, amount, max)
+              : transferToken({ ...ctx, onStatus }, asset, destination!, amount, max),
+          config.explorerUrl
         )
       );
     }
-    eligibleAssets = allAssets.filter((a) => a.isSellable);
   }
 
-  if (eligibleAssets.length === 0) {
-    console.log(chalk.red('\nNo sellable tokens found in this wallet for DEX routers.'));
-    process.exit(0);
-  }
-
-  // 6. Interactive Asset Selection
-  if (mode === 'BURN_DEAD') {
-    console.log(chalk.bold.red('\nSelect the tokens to BURN (send to 0x...dEaD):'));
-  } else {
-    console.log(chalk.bold('\nSelect the assets to include:'));
-  }
-
-  const choices = eligibleAssets.map((asset) => {
-    const usdStr = chalk.bold.green(formatUsd(asset.valueUsd).padEnd(9));
-    const formattedBal = formatBalance(asset.balanceFormatted);
-    const tag = asset.type === 'NATIVE' ? chalk.yellow('(Native Gas)') : chalk.gray(`(${asset.address.slice(0, 6)}...${asset.address.slice(-4)})`);
-
-    return {
-      name: `${asset.symbol.padEnd(12)} | Balance: ${formattedBal.padEnd(14)} (${usdStr}) ${tag}`,
-      value: asset.address,
-      checked: mode === 'BURN_DEAD' ? asset.type !== 'NATIVE' : true,
-    };
-  });
-
-  const selectedAddresses = await checkbox({
-    message: 'Choose assets (Space to toggle, Enter to confirm):',
-    choices,
-    validate: (val) => (val.length > 0 ? true : 'You must select at least one asset!'),
-  });
-
-  const selectedAssets = eligibleAssets.filter((a) => selectedAddresses.includes(a.address));
-
-  // 7. Configure Amounts
-  console.log(chalk.bold('\nConfigure amounts:'));
-  const transferPlans: AssetTransferPlan[] = [];
-
-  for (const asset of selectedAssets) {
-    const isNative = asset.type === 'NATIVE';
-
-    if (!isNative) {
-      const gmgnUrl = `https://gmgn.ai/robinhood/token/sZ5uzVHs_${asset.address}`;
-      const clickableAddr = `\u001B]8;;${gmgnUrl}\u0007${chalk.cyan.underline(asset.address)}\u001B]8;;\u0007`;
-      console.log(`\n📄 ${chalk.bold.white(asset.symbol)} Contract: ${clickableAddr}`);
-      console.log(chalk.gray(`   🔗 GMGN:     ${gmgnUrl}`));
-    } else {
-      console.log(`\n⛽ ${chalk.bold.yellow('Native Gas Token (ETH)')}`);
-    }
-
-    const amountChoice = await select({
-      message: `Amount for ${chalk.bold.cyan(asset.symbol)} (Available: ${asset.balanceFormatted} / ${formatUsd(asset.valueUsd)}):`,
-      choices: [
-        {
-          name: `100% (Max / All)${isNative ? ' [Auto-subtracts gas reserve]' : ''}`,
-          value: 'MAX',
-        },
-        {
-          name: 'Custom Amount',
-          value: 'CUSTOM',
-        },
-      ],
-    });
-
-    if (amountChoice === 'MAX') {
-      transferPlans.push({
-        asset,
-        amountRaw: asset.balanceRaw,
-        amountFormatted: asset.balanceFormatted,
-        isMax: true,
-        valueUsd: asset.valueUsd,
-      });
-    } else {
-      const customAmountStr = await input({
-        message: `Enter amount of ${asset.symbol} to process:`,
-        validate: (val) => {
-          try {
-            const raw = parseUnits(val, asset.decimals);
-            if (raw <= 0n) return 'Amount must be greater than 0';
-            if (raw > asset.balanceRaw) return 'Amount exceeds current wallet balance';
-            return true;
-          } catch {
-            return 'Invalid number format';
-          }
-        },
-      });
-
-      const amountRaw = parseUnits(customAmountStr, asset.decimals);
-      const customQty = Number(amountRaw) / Math.pow(10, asset.decimals);
-      const customUsd = asset.priceUsd ? customQty * asset.priceUsd : undefined;
-
-      transferPlans.push({
-        asset,
-        amountRaw,
-        amountFormatted: customAmountStr,
-        isMax: false,
-        valueUsd: customUsd,
-      });
-    }
-  }
-
-  // 8. Execution Plan Ordering
-  // For transfers: ERC20s first, Native ETH last
-  transferPlans.sort((a, b) => {
-    if (a.asset.type === 'ERC20' && b.asset.type === 'NATIVE') return -1;
-    if (a.asset.type === 'NATIVE' && b.asset.type === 'ERC20') return 1;
-    return 0;
-  });
-
-  const totalSelectedUsd = transferPlans.reduce((sum, p) => sum + (p.valueUsd || 0), 0);
-
-  // 9. Review & Confirmation Preview
-  const isBurn = mode === 'BURN_DEAD' || recipientAddress.toLowerCase() === DEAD_ADDRESS.toLowerCase();
-
-  console.log(chalk.bold.white('\n======================= TRANSACTION PLAN PREVIEW ======================='));
-  console.log(chalk.cyan(`Mode:        ${chalk.bold.yellow(mode === 'BURN_DEAD' ? 'BURN_DEAD (0x...dEaD)' : mode)}`));
-  if (mode !== 'SELL_TO_ETH') {
-    console.log(chalk.cyan(`Recipient:   ${isBurn ? chalk.bold.red(recipientAddress) : chalk.bold.yellow(recipientAddress)}`));
-  }
-  console.log(chalk.cyan(`Total Items: ${chalk.bold.white(transferPlans.length)}`));
-  console.log(chalk.cyan(`Est. Value:  ${chalk.bold.green(formatUsd(totalSelectedUsd))}`));
-  console.log('-------------------------------------------------------------------------');
-
-  transferPlans.forEach((plan, i) => {
-    const asset = plan.asset;
-    const typeLabel = asset.type === 'NATIVE' ? chalk.yellow('[Native]') : chalk.blue('[ERC-20]');
-    const amountLabel = plan.isMax
-      ? chalk.green.bold(`MAX (~${plan.amountFormatted} ${asset.symbol})`)
-      : chalk.green(`${plan.amountFormatted} ${asset.symbol}`);
-    const usdLabel = chalk.bold.green(formatUsd(plan.valueUsd));
-    const actionLabel = (mode === 'TRANSFER' || mode === 'BURN_DEAD')
-      ? (isBurn ? chalk.red('-> Burn (0x...dEaD)') : chalk.gray('-> Transfer'))
-      : chalk.magenta('-> Swap to ETH');
-
-    console.log(
-      `  ${chalk.gray(i + 1 + '.')} ${typeLabel} ${chalk.bold(asset.symbol.padEnd(8))} Amount: ${amountLabel.padEnd(25)} (${usdLabel}) ${actionLabel}`
-    );
-  });
-  console.log('=========================================================================\n');
-
-  const proceed = await confirm({
-    message: chalk.red.bold(
-      isBurn
-        ? `🔥 Are you sure you want to permanently BURN these ${transferPlans.length} token(s) to 0x...dEaD?`
-        : `⚠️  Are you sure you want to execute these ${transferPlans.length} action(s) on Robinhood Chain?`
-    ),
-    default: false,
-  });
-
-  if (!proceed) {
-    console.log(chalk.yellow('\nOperation cancelled by user. No transactions were executed.'));
-    process.exit(0);
-  }
-
-  // 10. Execution Loop
-  console.log(chalk.bold.green('\n🚀 Starting execution...\n'));
-  const results: ExecutionResult[] = [];
-
-  for (let i = 0; i < transferPlans.length; i++) {
-    const plan = transferPlans[i];
-    const { asset } = plan;
-    const progress = `[${i + 1}/${transferPlans.length}]`;
-
-    if (mode === 'TRANSFER' || mode === 'BURN_DEAD') {
-      const txSpinner = ora({
-        text: `${progress} ${isBurn ? 'Burning' : 'Sending'} ${plan.isMax ? 'MAX' : plan.amountFormatted} ${asset.symbol} to ${recipientAddress.slice(0, 6)}...${recipientAddress.slice(-4)}`,
-        color: isBurn ? 'red' : 'cyan',
-      }).start();
-
-      const result = await executeSingleTransfer(
-        plan,
-        recipientAddress,
-        walletClient,
-        publicClient
-      );
-
-      results.push(result);
-
-      if (result.status === 'SUCCESS') {
-        const txUrl = explorerUrl ? `${explorerUrl}/tx/${result.txHash}` : result.txHash;
-        txSpinner.succeed(
-          chalk.green(
-            `${progress} ${isBurn ? 'Burned' : 'Sent'} ${result.amountFormatted} ${asset.symbol}! Tx: ${chalk.bold(result.txHash)}`
-          )
-        );
-        if (explorerUrl) {
-          console.log(chalk.gray(`      🔗 Explorer: ${txUrl}`));
-        }
-      } else if (result.status === 'SKIPPED') {
-        txSpinner.warn(chalk.yellow(`${progress} Skipped ${asset.symbol}: ${result.error}`));
-      } else {
-        txSpinner.fail(chalk.red(`${progress} Failed ${asset.symbol}: ${result.error}`));
-      }
-    } else {
-      // Selling mode (SELL_TO_ETH or SELL_AND_SWEEP)
-      if (asset.type === 'NATIVE') {
-        // Native ETH is handled at the end if SELL_AND_SWEEP
-        continue;
-      }
-
-      const sellSpinner = ora({
-        text: `${progress} Selling ${plan.amountFormatted} ${asset.symbol} for ETH...`,
-        color: 'magenta',
-      }).start();
-
-      const result = await executeSellToken(
-        publicClient,
-        walletClient,
-        asset,
-        plan.amountRaw,
-        plan.isMax,
-        account.address, // ETH proceeds arrive at sender wallet
-        3, // 3% slippage
-        (statusText) => {
-          sellSpinner.text = `${progress} ${statusText}`;
-        }
-      );
-
-      results.push(result);
-
-      if (result.status === 'SUCCESS') {
-        const txUrl = explorerUrl ? `${explorerUrl}/tx/${result.txHash}` : result.txHash;
-        sellSpinner.succeed(
-          chalk.green(
-            `${progress} Sold ${result.amountFormatted} ${asset.symbol} for ~${result.proceedsEth} ETH! Tx: ${chalk.bold(result.txHash)}`
-          )
-        );
-        if (explorerUrl) {
-          console.log(chalk.gray(`      🔗 Explorer: ${txUrl}`));
-        }
-      } else {
-        sellSpinner.fail(chalk.red(`${progress} Failed to sell ${asset.symbol}: ${result.error}`));
-      }
-    }
-  }
-
-  // If mode is SELL_AND_SWEEP, sweep final remaining ETH to recipient
   if (mode === 'SELL_AND_SWEEP') {
-    console.log(chalk.bold.cyan('\n🧹 Final Step: Sweeping consolidated ETH to destination address...'));
-    const sweepSpinner = ora({ text: 'Calculating final ETH balance & gas...', color: 'green' }).start();
-
-    const nativeAsset = await fetchNativeAsset(publicClient, account.address, nativeSymbol, nativeDecimals);
-    const sweepPlan: AssetTransferPlan = {
-      asset: nativeAsset,
-      amountRaw: nativeAsset.balanceRaw,
-      amountFormatted: nativeAsset.balanceFormatted,
-      isMax: true,
-    };
-
-    const sweepResult = await executeSingleTransfer(
-      sweepPlan,
-      recipientAddress,
-      walletClient,
-      publicClient
-    );
-
-    results.push(sweepResult);
-
-    if (sweepResult.status === 'SUCCESS') {
-      const txUrl = explorerUrl ? `${explorerUrl}/tx/${sweepResult.txHash}` : sweepResult.txHash;
-      sweepSpinner.succeed(
-        chalk.green(`Swept ${sweepResult.amountFormatted} ETH to ${recipientAddress}! Tx: ${chalk.bold(sweepResult.txHash)}`)
-      );
-      if (explorerUrl) {
-        console.log(chalk.gray(`      🔗 Explorer: ${txUrl}`));
-      }
+    if (results.some((r) => r.status === 'failed')) {
+      console.log(c.warn(`${sym.warn} The ETH was not sent, because a sale failed. It stays here so you can try again.`));
     } else {
-      sweepSpinner.fail(chalk.red(`Failed to sweep ETH: ${sweepResult.error}`));
+      results.push(
+        await runStep(
+          { doing: `${c.dim(`[${n}/${n}]`)} Sending all ETH to ${destination!.slice(0, 8)}…`, done: 'Sent', would: 'Would send' },
+          (onStatus) => sendNative({ ...ctx, onStatus }, scan.native, destination!, 0n, true),
+          config.explorerUrl
+        )
+      );
     }
   }
 
-  // 11. Summary Report
-  console.log(chalk.bold.white('\n========================= EXECUTION REPORT ========================='));
-  const successfulCount = results.filter((r) => r.status === 'SUCCESS').length;
-  const failedCount = results.filter((r) => r.status === 'FAILED').length;
-  const skippedCount = results.filter((r) => r.status === 'SKIPPED').length;
-
-  console.log(
-    `Status: ${chalk.green(`${successfulCount} Succeeded`)}, ${chalk.red(`${failedCount} Failed`)}, ${chalk.yellow(`${skippedCount} Skipped`)}`
-  );
-  console.log('====================================================================');
-  console.log(chalk.gray(`💖 Support the developer:`));
-  console.log(chalk.gray(`   EVM:    ${chalk.white('0xcDcC4656293424544F32BfA58089e982B9624866')}`));
-  console.log(chalk.gray(`   Solana: ${chalk.white('94TmHVSd6ZWc9cAWKysQXQ5hGaymBvkQVEgaTtLVyHt8')}`));
-  console.log('====================================================================\n');
+  printSummary(results, config, prices.ethUsd);
+  printDonations();
 }
 
-main().catch((err) => {
-  console.error(chalk.red('\nFatal error occurred:'), err);
+main().catch((err: unknown) => {
+  if (err instanceof Error && err.name === 'ExitPromptError') {
+    console.log(c.dim('\n\nClosed. Nothing more was sent.'));
+    process.exit(130);
+  }
+  console.error('\n' + box([describeError(err)], { title: `${sym.fail} Something went wrong`, color: c.danger }));
+  console.error(c.dim('Nothing more will be sent. If this keeps happening, please open an issue on GitHub.\n'));
   process.exit(1);
 });

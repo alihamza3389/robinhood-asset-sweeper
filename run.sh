@@ -1,37 +1,26 @@
 #!/usr/bin/env bash
+# One-click launcher for Linux / macOS. Any arguments are passed through (e.g. ./run.sh --dry-run).
+set -e
+cd "$(dirname "$0")"
 
-echo "================================================================"
-echo " Robinhood Chain Multi-Asset Sweeper & Batch Seller"
-echo "================================================================"
-echo ""
+echo "Robinhood Chain Asset Sweeper v3 Rework"
+echo
 
-# Check if Node.js is installed
 if ! command -v node >/dev/null 2>&1; then
-    echo "[ERROR] Node.js is not installed!"
-    echo "Please install Node.js (v18+) from: https://nodejs.org"
+    echo "Node.js is not installed. Install the LTS version from https://nodejs.org and run this again."
     exit 1
 fi
 
-# Check if .env exists
-if [ ! -f .env ]; then
-    if [ -f .env.example ]; then
-        echo "[.env missing] Creating .env from .env.example template..."
-        cp .env.example .env
-        echo ""
-        echo "[ACTION REQUIRED] A new .env file was created for you."
-        echo "Please edit .env and enter your PRIVATE_KEY before proceeding."
-        echo ""
-        read -p "Press Enter after editing .env to continue..."
-    fi
+major=$(node -p 'process.versions.node.split(".")[0]')
+if [ "$major" -lt 20 ]; then
+    echo "Node.js $(node -v) is too old. Please install version 20 or newer from https://nodejs.org"
+    exit 1
 fi
 
-# Install dependencies if node_modules is missing
-if [ ! -d "node_modules" ]; then
-    echo "[1/2] Installing required dependencies..."
-    npm install
+if [ ! -d node_modules ]; then
+    echo "First run: installing packages (this takes a few seconds)..."
+    npm install --no-audit --no-fund
+    echo
 fi
 
-# Run the application
-echo "[2/2] Launching Sweeper & Batch Seller..."
-echo ""
-npm start
+npm start --silent -- "$@"
