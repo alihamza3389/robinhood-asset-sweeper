@@ -1,4 +1,4 @@
-# 🧹 Robinhood Chain Asset Sweeper
+# 🧹 Robinhood Chain Asset Sweeper · v3 Rework
 
 **Clean up your Robinhood Chain wallet in a few clicks.** Send your tokens somewhere else, sell them for ETH, or get rid of spam, all at once, with a simple step-by-step menu.
 
@@ -25,7 +25,31 @@ It's made for people who are **not** developers. If you can copy and paste, you 
 | 🧹 **Sell everything, then send the ETH** | Sells your tokens, then sends all the ETH to another address in one go. |
 | 🔥 **Get rid of spam tokens** | Sends junk or scam tokens to a burn address so they stop cluttering your wallet. |
 
-It was built for [Bucket Shop](https://bucket.markets) reward wallets, which collect lots of small token payouts, but it works for any Robinhood Chain wallet.
+---
+
+## Why this exists
+
+[**Bucket Shop**](https://bucket.markets) ([@RealBucketShop](https://x.com/RealBucketShop)) pays its fee rewards straight into holders' wallets, spread across **anywhere from 1 to 20 different assets**: crypto tokens and tokenized stocks like AAPL, NVDA or GLD.
+
+That's great, until your wallet is full of dozens of tiny reward positions. Cashing them out one by one, on different sites, with an approval and a swap for each, takes ages and costs a fee every time.
+
+This tool fixes that. It finds **all** your Bucket Shop payouts automatically, then in one pass it either:
+
+- **sells them all for ETH**, or
+- **sends them all** to your main wallet or cold storage.
+
+It works for any Robinhood Chain wallet too: clearing airdrop dust, burning scam tokens, or moving everything to a new wallet.
+
+### What's new in v3 (the rework)
+
+Version 3 is a full rewrite, focused on safety and on being easy for anyone to use:
+
+- A **setup wizard** and a simple **step-by-step menu**
+- Your key can be **saved locked with a password**, so you don't paste it every time
+- Sales are **price-protected** and use **exact approvals only**
+- **Practice mode** to try everything without sending anything
+- Finds **tokenized stocks** correctly, and can sell tokens like **GLD through Uniswap**
+- A **summary and chart links** before anything is sent
 
 ---
 
@@ -236,4 +260,4 @@ Code layout: `src/scan` finds tokens and prices, `src/actions` sends, sells and 
 
 ---
 
-*This software is provided as is, without warranty. You are responsible for the transactions you sign.*
+*Released under the [MIT License](./LICENSE). This software is provided as is, without warranty. You are responsible for the transactions you sign.*

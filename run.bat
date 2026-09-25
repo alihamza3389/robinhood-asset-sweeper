@@ -3,7 +3,7 @@ REM One-click launcher for Windows. Double-click it, or run "run.bat --dry-run" 
 setlocal
 cd /d "%~dp0"
 
-echo Robinhood Chain Asset Sweeper
+echo Robinhood Chain Asset Sweeper v3 Rework
 echo.
 
 where node >nul 2>&1

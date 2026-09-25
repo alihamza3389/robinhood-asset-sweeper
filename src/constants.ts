@@ -1,6 +1,9 @@
 import { Address, getAddress } from 'viem';
 
 // Robinhood Chain mainnet (Arbitrum Orbit L2) defaults
+/** Shown in the banner and help. Keep in step with package.json. */
+export const VERSION = 'v3 Rework';
+
 export const DEFAULTS = {
   chainId: 4663,
   chainName: 'Robinhood Chain',

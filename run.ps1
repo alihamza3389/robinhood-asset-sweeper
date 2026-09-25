@@ -6,7 +6,7 @@
 
 Set-Location -LiteralPath $PSScriptRoot
 
-Write-Host "Robinhood Chain Asset Sweeper" -ForegroundColor Green
+Write-Host "Robinhood Chain Asset Sweeper v3 Rework" -ForegroundColor Green
 Write-Host ""
 
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {

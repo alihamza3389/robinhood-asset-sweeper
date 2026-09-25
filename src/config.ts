@@ -2,13 +2,13 @@ import dotenv from 'dotenv';
 import { parseArgs } from 'node:util';
 import { Address, isAddress, getAddress } from 'viem';
 import { Config } from './types.js';
-import { DEFAULTS } from './constants.js';
+import { DEFAULTS, VERSION } from './constants.js';
 import { isValidPrivateKey, obtainPrivateKey, withPrefix } from './unlock.js';
 
 export { isValidPrivateKey };
 
 export const HELP = `
-Robinhood Chain Asset Sweeper
+Robinhood Chain Asset Sweeper ${VERSION}
 
 Start it with run.bat (Windows), ./run.sh (Mac/Linux) or npm start.
 Add options after --, for example: npm start -- --dry-run
