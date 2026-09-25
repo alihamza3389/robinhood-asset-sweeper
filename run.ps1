@@ -33,7 +33,7 @@ if (-not (Test-Path node_modules)) {
     Write-Host ""
 }
 
-npm start --silent -- @args
+node --import tsx src/index.ts @args
 
 Write-Host ""
 Read-Host "Press Enter to close"

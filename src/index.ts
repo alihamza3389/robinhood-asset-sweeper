@@ -320,6 +320,12 @@ async function main() {
   printDonations();
 }
 
+// If the output is closed early (e.g. piped into `head`), just stop quietly.
+process.stdout.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EPIPE') process.exit(0);
+  throw err;
+});
+
 main().catch((err: unknown) => {
   if (err instanceof Error && err.name === 'ExitPromptError') {
     console.log(c.dim('\n\nClosed. Nothing more was sent.'));

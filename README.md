@@ -91,6 +91,7 @@ cd robinhood-asset-sweeper
 ### Step 2: Start it
 
 - **Windows:** open the extracted folder and double-click **`run.bat`**.
+  - Prefer typing commands? In **Command Prompt (CMD)** type `run.bat`. In **PowerShell** type `.\run.ps1` (or `.\run.bat`).
 - **Mac / Linux:** open a terminal in the folder and type `./run.sh`
 
 The first time, it installs what it needs (a few seconds), then opens the **setup wizard**.
@@ -121,7 +122,8 @@ Use the **arrow keys** to move, **Space** to tick or untick a token, and **Enter
 
 Run it in **practice mode**. It goes through every step and checks everything, but never sends anything:
 
-- **Windows:** open a terminal in the folder and type `run.bat --dry-run`
+- **Windows (CMD):** open Command Prompt in the folder and type `run.bat --dry-run`
+- **Windows (PowerShell):** `.\run.ps1 --dry-run`
 - **Mac / Linux:** `./run.sh --dry-run`
 
 ---
@@ -145,13 +147,13 @@ Blockchain transactions can't be undone. Always read the summary before confirmi
 
 ## Commands
 
-| What you want | Windows | Mac / Linux |
-| :--- | :--- | :--- |
-| Start the tool | double-click `run.bat` | `./run.sh` |
-| Practice mode (sends nothing) | `run.bat --dry-run` | `./run.sh --dry-run` |
-| Change your settings | `run.bat --setup` | `./run.sh --setup` |
-| Start over (remove saved key and settings) | `run.bat --reset` | `./run.sh --reset` |
-| Show help | `run.bat --help` | `./run.sh --help` |
+| What you want | Windows (CMD) | Windows (PowerShell) | Mac / Linux |
+| :--- | :--- | :--- | :--- |
+| Start the tool | double-click `run.bat`, or `run.bat` | `.\run.ps1` | `./run.sh` |
+| Practice mode (sends nothing) | `run.bat --dry-run` | `.\run.ps1 --dry-run` | `./run.sh --dry-run` |
+| Change your settings | `run.bat --setup` | `.\run.ps1 --setup` | `./run.sh --setup` |
+| Start over (remove saved key and settings) | `run.bat --reset` | `.\run.ps1 --reset` | `./run.sh --reset` |
+| Show help | `run.bat --help` | `.\run.ps1 --help` | `./run.sh --help` |
 
 If you prefer npm: `npm start`, `npm run dry-run`, `npm run setup`, `npm run reset`.
 
@@ -163,10 +165,13 @@ If you prefer npm: `npm start`, `npm run dry-run`, `npm run setup`, `npm run res
 Node.js isn't installed, or the window was open before you installed it. Install Node.js, close the window, and try again.
 
 **PowerShell says "running scripts is disabled" or "not digitally signed"**
-Double-click `run.bat` instead. Or run `powershell -ExecutionPolicy Bypass -File .\run.ps1`.
+Windows blocks PowerShell scripts by default. Either type `.\run.bat` instead (it works the same), or allow the script for this one run: `powershell -ExecutionPolicy Bypass -File .\run.ps1`.
+
+**PowerShell says `run.bat` "is not recognized"**
+PowerShell needs `.\` in front: type `.\run.bat` or `.\run.ps1`.
 
 **The boxes or symbols look garbled**
-Your terminal can't draw emoji. Start the tool in plain mode: in CMD run `set SWEEPER_PLAIN=1` and then `run.bat` (Mac/Linux: `SWEEPER_PLAIN=1 ./run.sh`).
+Your terminal can't draw emoji. Start the tool in plain mode. CMD: `set SWEEPER_PLAIN=1` then `run.bat`. PowerShell: `$env:SWEEPER_PLAIN=1` then `.\run.ps1`. Mac/Linux: `SWEEPER_PLAIN=1 ./run.sh`.
 
 **How do I paste into the window?**
 Right-click, or press Ctrl+V (Ctrl+Shift+V on Linux). Your private key stays hidden as `****` while you paste it. That's normal.
@@ -175,7 +180,7 @@ Right-click, or press Ctrl+V (Ctrl+Shift+V on Linux). Your private key stays hid
 After 3 wrong tries, choose **"I forgot it: paste my private key instead"**, paste your key from MetaMask or Rabby, and pick a new password. A forgotten password never affects your funds.
 
 **"Blockscout rejected the API key"**
-Run the setup again (`run.bat --setup` or `./run.sh --setup`) and paste the key, making sure you copied all of it.
+Run the setup again (`run.bat --setup`, `.\run.ps1 --setup` or `./run.sh --setup`) and paste the key, making sure you copied all of it.
 
 **"This wallet has no ETH"**
 Every transaction needs a tiny bit of ETH on Robinhood Chain to pay the network fee. A dollar or two covers many transactions.

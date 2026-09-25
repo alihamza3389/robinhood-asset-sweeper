@@ -23,4 +23,4 @@ if [ ! -d node_modules ]; then
     echo
 fi
 
-npm start --silent -- "$@"
+node --import tsx src/index.ts "$@"

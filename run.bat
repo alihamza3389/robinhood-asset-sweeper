@@ -19,7 +19,7 @@ if errorlevel 1 goto :install_failed
 echo.
 
 :launch
-call npm start --silent -- %*
+node --import tsx src/index.ts %*
 goto :end
 
 :no_node
