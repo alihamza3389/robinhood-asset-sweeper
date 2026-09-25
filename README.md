@@ -1,128 +1,239 @@
-# Robinhood Chain Multi-Asset Sweeper & Batch Seller 🚀 (v2.0)
+# 🧹 Robinhood Chain Asset Sweeper
 
-An interactive CLI tool built on **Viem** and **Blockscout Pro API** to batch sweep, sell, or burn multiple assets (Native ETH + ERC-20 tokens, tokenized stocks, and reward distributions) in one sequence on **Robinhood Chain (Arbitrum Orbit L2, Chain ID: `4663`)**.
+**Clean up your Robinhood Chain wallet in a few clicks.** Send your tokens somewhere else, sell them for ETH, or get rid of spam, all at once, with a simple step-by-step menu.
 
----
+It's made for people who are **not** developers. If you can copy and paste, you can use it.
 
-## 💡 What's New in v2.0
-
-* ⚡ **Batch Sell & Liquidation Engine**:
-  * Swap any selection of tokens directly to ETH in one interactive session.
-  * Native routing through Robinhood Chain DEX contracts:
-    * **$BUCKET Token**: Liquidated via `BucketRouter` (`0x35f9D5...`).
-    * **USDG-routed Stocks** (AAPL, SPCX, NVDA, PLTR, TSLA): Liquidated via `StockRouterUsdg` (`0x716f97...`).
-    * **Crypto & Registered Stocks** (POOLS, DOGO, JUGGERNAUT, CASHCAT, USDG, NET, etc.): Liquidated via `StockRouterDirect` (`0xbdA740...`).
-* 🎛️ **4 Flexible Execution Modes**:
-  1. `Transfer / Sweep Assets`: Direct peer-to-peer or cold-storage batch transfer of selected assets to any destination.
-  2. `Batch Sell to ETH`: Converts selected tokens to ETH and deposits the proceeds directly into your wallet.
-  3. `Sell & Sweep`: Sells selected tokens for ETH, consolidates the balance, and sweeps the final remaining ETH to a target destination address.
-  4. `Burn / Discard to Dead Address`: Safely purge dead tokens, worthless meme coins, or scam dust by permanently transferring them to `0x000000000000000000000000000000000000dEaD`.
-* 🎯 **Dynamic Destination Prompting**:
-  * Automatically prompts for the recipient address when you run the script, pre-filling your `.env` destination as the default. You can also type `"dead"` or `"burn"` at the prompt to route directly to the burn address.
-* 🔗 **Live Clickable GMGN Chart Links**:
-  * On the amount configuration step, the tool displays the complete contract address hyperlinked directly to [GMGN.ai](https://gmgn.ai) (`https://gmgn.ai/robinhood/token/sZ5uzVHs_<address>`), letting you instantly inspect liquidity, volume, and charts before confirming.
-* 🚀 **Parallelized Fast Scanning Engine**:
-  * Simultaneous asynchronous discovery queries Blockscout Pro API, official Robinhood stock token registries, and on-chain Uniswap v4 pool states in parallel, bringing startup scan times down to ~1-2 seconds.
-* 📈 **Real-Time On-Chain Pricing & USD Valuations**:
-  * Pulls live asset valuations from indexer price feeds and reads on-chain Uniswap v4 `StateView` (`0xF333...`) slot0 pool ratios to accurately price $BUCKET and other assets in USD.
-* 💾 **Automatic Custom Token Persistence**:
-  * Manually added ERC-20 contract addresses are automatically saved to `custom-tokens.json` and scanned on every future run without requiring re-entry.
-* 🛡️ **Zero-Revert Safeguards & Scam Token Detection**:
-  * Automatically verifies live on-chain token balances immediately prior to transaction construction to eliminate precision mismatches and balance drift errors.
-  * Accurately detects and decodes phantom scam tokens (where contracts spoof fake balances while actual internal balances are 0).
-
----
-
-## 🪣 Why This Exists & Use Cases
-
-* 🪣 **Bucket Shop ([bucket.markets](https://bucket.markets)) Distribution Sweeper**:
-  Bucket Shop distributes fee rewards across **1 to 20 different assets** (crypto tokens, tokenized stocks) into user wallets. This tool auto-detects all accumulated payout rewards and either sweeps them or liquidates them all into ETH in one pass.
-* 💸 **Portfolio Liquidation**:
-  Exit small positions, airdrop dust, or reward tokens across multiple pools into native ETH without manually approving and swapping on separate web UIs.
-* 🔥 **Purging Dead Tokens & Scam Dust**:
-  Clean up wallet bloat by batch burning worthless or dead tokens to `0x000000000000000000000000000000000000dEaD`.
-* 🧹 **Cold Storage & Wallet Migration**:
-  Transfer an entire multi-asset portfolio to cold storage or a hardware wallet in seconds instead of transferring tokens one-by-one.
-* ⛽ **Burner Wallet Draining**:
-  Sweep all tokens and remaining native gas from temporary addresses to a primary vault with automated gas reserve deduction.
-
----
-
-## 🌐 Network Specification (Robinhood Chain)
-
-| Parameter | Value |
-| :--- | :--- |
-| **Network Name** | Robinhood Chain |
-| **Chain ID** | `4663` (Testnet: `46630`) |
-| **RPC Endpoint** | `https://rpc.mainnet.chain.robinhood.com` |
-| **Gas Token** | `ETH` (18 decimals) |
-| **Block Explorer** | [https://robinhoodchain.blockscout.com](https://robinhoodchain.blockscout.com) |
-| **Blockscout API Base** | `https://robinhoodchain.blockscout.com/api/v2` |
-
----
-
-## 🚀 Quick Start
-
-> 📘 **New to coding or terminal tools?** Check out the step-by-step **[Beginner's Setup Guide (Windows & Linux)](./GUIDE.md)** for a complete, zero-code walkthrough!
-
-### ⚡ 1-Click Launchers (Recommended)
-
-* **Windows (CMD, PowerShell / pwsh)**: Double-click **`run.bat`** (or run `run.bat` in CMD / `.\run.ps1` in PowerShell). Automatically checks Node.js, sets up `.env`, installs packages, and launches.
-* **Linux / macOS**: Run **`./run.sh`** in your terminal.
-
----
-
-### 💻 Manual Setup
-
-#### 1. Configure Environment
-Copy `.env.example` to `.env`:
-```bash
-cp .env.example .env
+```
+ STEP 1/5  Choose what to do
+? What would you like to do?
+❯ 📤 Send to another wallet
+  💱 Sell tokens for ETH
+  🧹 Sell everything, then send the ETH
+  🔥 Get rid of spam tokens
+  👋 Exit
 ```
 
-Open `.env` and fill in:
-* `PRIVATE_KEY`: Your sender wallet private key (starts with `0x`).
-* `DESTINATION_ADDRESS`: (Optional) Default address where you want swept assets sent.
-* `BLOCKSCOUT_API_KEY`: Your Blockscout Pro API key from [dev.blockscout.com](https://dev.blockscout.com) (**100% Free** — takes 10 seconds to generate, no payment/credit card required).
+---
 
-*(All Robinhood Chain RPC, Chain ID `4663`, and Explorer endpoints are pre-configured by default).*
+## What can it do?
 
-#### 2. Install & Run
+| Option | What happens |
+| :--- | :--- |
+| 📤 **Send to another wallet** | Moves tokens and/or ETH to another address, like your main wallet. |
+| 💱 **Sell tokens for ETH** | Sells your tokens (BUCKET, tokenized stocks like AAPL or NVDA, reward tokens, and more) for ETH. The ETH stays in your wallet. |
+| 🧹 **Sell everything, then send the ETH** | Sells your tokens, then sends all the ETH to another address in one go. |
+| 🔥 **Get rid of spam tokens** | Sends junk or scam tokens to a burn address so they stop cluttering your wallet. |
+
+It was built for [Bucket Shop](https://bucket.markets) reward wallets, which collect lots of small token payouts, but it works for any Robinhood Chain wallet.
+
+---
+
+## Before you start: you need 2 things
+
+### 1. Node.js (free)
+
+Node.js is the free program that runs this tool.
+
+- **Windows or Mac:** go to [nodejs.org](https://nodejs.org), download the **LTS** version, and install it with the default options.
+- **Linux (Ubuntu/Debian):** run `sudo apt install nodejs npm`, then check that `node -v` shows version 20 or newer.
+
+### 2. A free Blockscout key (takes 30 seconds)
+
+The tool uses Blockscout (the Robinhood Chain explorer) to find the tokens in your wallet.
+
+1. Go to [dev.blockscout.com](https://dev.blockscout.com) and sign in with email, Google or GitHub.
+2. Create an API key and copy it. It's free and needs no card.
+
+You'll paste this key once, in the setup wizard.
+
+---
+
+## How to run it
+
+### Step 1: Download
+
+On this GitHub page, click the green **Code** button, then **Download ZIP**. Find the downloaded file, right-click it and choose **Extract All**.
+
+<details>
+<summary>Or, if you use git</summary>
+
+```bash
+git clone https://github.com/alihamza3389/robinhood-asset-sweeper.git
+cd robinhood-asset-sweeper
+```
+</details>
+
+### Step 2: Start it
+
+- **Windows:** open the extracted folder and double-click **`run.bat`**.
+- **Mac / Linux:** open a terminal in the folder and type `./run.sh`
+
+The first time, it installs what it needs (a few seconds), then opens the **setup wizard**.
+
+### Step 3: The setup wizard (first time only)
+
+It asks three things:
+
+1. **Your private key, and how to keep it.** We recommend **"Save it locked with a password"**. You paste your key once, choose a password, and from then on you only type the password. The key is encrypted on your computer and never leaves it.
+2. **Your Blockscout key** from above. The wizard checks it works.
+3. **Your usual destination address** (optional), so you don't have to paste it every time.
+
+> 🔑 **Where do I find my private key?** In MetaMask or Rabby: open the account menu, then **Account details**, then **Show private key**. Anyone with this key controls your wallet, so never share it with anyone. For extra safety, use a separate wallet that only holds what you want to clean up.
+
+### Step 4: Follow the steps
+
+Use the **arrow keys** to move, **Space** to tick or untick a token, and **Enter** to continue.
+
+1. **Choose what to do.**
+2. **Look through your wallet.** You'll see your balance and a list of every token found.
+3. **Pick your tokens** and how much of each (everything, a number like `1.5`, or a percent like `50%`).
+4. **Review.** A summary box shows exactly what will happen, plus a chart link for each token. **Nothing is sent before you confirm.**
+5. **Go.** You'll see each step finish, with a link to view it on the explorer.
+
+---
+
+## Try it with no risk first
+
+Run it in **practice mode**. It goes through every step and checks everything, but never sends anything:
+
+- **Windows:** open a terminal in the folder and type `run.bat --dry-run`
+- **Mac / Linux:** `./run.sh --dry-run`
+
+---
+
+## Is it safe?
+
+This tool signs real transactions, so it's built to be careful:
+
+- 🔐 **Your key stays on your computer.** If you save it, it's locked with your password using the same encryption as MetaMask (the standard Ethereum keystore format). It is never sent anywhere.
+- 🧾 **You always see a summary first.** Nothing is sent until you confirm.
+- 🛡️ **Sales are price-protected.** Each sale is checked just before sending. If the price moves more than 2% while it's being sent, the sale is cancelled instead of going through at a bad price. A sale is also skipped if the price is far below the market (usually because too few people are trading that token).
+- ✅ **Exact approvals only.** The trading contract can only ever use the exact amount you're selling, never more.
+- 🧪 **Everything is tested before it's sent.** Fake "phantom" tokens that can't actually be moved are caught before you pay any fee.
+- 🎯 **Address checks.** It warns you about unusual addresses and asks you to retype the last 4 characters of a new address, which protects against malware that secretly swaps copied addresses.
+- 🔥 **Burning needs you to type `BURN`.** Only tokens flagged as likely spam are pre-selected.
+- 👀 **Open source.** Every line of code is in the [`src`](./src) folder for anyone to check.
+
+Blockchain transactions can't be undone. Always read the summary before confirming.
+
+---
+
+## Commands
+
+| What you want | Windows | Mac / Linux |
+| :--- | :--- | :--- |
+| Start the tool | double-click `run.bat` | `./run.sh` |
+| Practice mode (sends nothing) | `run.bat --dry-run` | `./run.sh --dry-run` |
+| Change your settings | `run.bat --setup` | `./run.sh --setup` |
+| Start over (remove saved key and settings) | `run.bat --reset` | `./run.sh --reset` |
+| Show help | `run.bat --help` | `./run.sh --help` |
+
+If you prefer npm: `npm start`, `npm run dry-run`, `npm run setup`, `npm run reset`.
+
+---
+
+## Help! Something went wrong
+
+**"node is not recognized"**
+Node.js isn't installed, or the window was open before you installed it. Install Node.js, close the window, and try again.
+
+**PowerShell says "running scripts is disabled" or "not digitally signed"**
+Double-click `run.bat` instead. Or run `powershell -ExecutionPolicy Bypass -File .\run.ps1`.
+
+**How do I paste into the window?**
+Right-click, or press Ctrl+V (Ctrl+Shift+V on Linux). Your private key stays hidden as `****` while you paste it. That's normal.
+
+**I forgot my password**
+After 3 wrong tries, choose **"I forgot it: paste my private key instead"**, paste your key from MetaMask or Rabby, and pick a new password. A forgotten password never affects your funds.
+
+**"Blockscout rejected the API key"**
+Run the setup again (`run.bat --setup` or `./run.sh --setup`) and paste the key, making sure you copied all of it.
+
+**"This wallet has no ETH"**
+Every transaction needs a tiny bit of ETH on Robinhood Chain to pay the network fee. A dollar or two covers many transactions.
+
+**A token says "not sellable here"**
+There's nowhere to sell it on Robinhood Chain right now (no market with enough trading). You can still send it or burn it.
+
+**A sale was skipped because the price is below the market**
+Not enough people are trading that token for the amount you're selling. Try selling a smaller amount, or accept a worse price with `--max-impact 30`.
+
+**A token failed as a "phantom/spam token"**
+Some scam tokens show a balance that can't actually be moved. The tool spots this before you pay a fee. Just ignore those tokens.
+
+**"not confirmed within 3 minutes"**
+The network was slow. Open the transaction link to see if it went through **before** running the tool again.
+
+**I want to start over**
+Use `--reset` (see Commands). It shows what's saved and lets you pick what to remove. It never touches your wallet or funds.
+
+---
+
+## 💚 Support this project
+
+This tool is free. If it saved you time or money, tips are appreciated:
+
+- **EVM** (Ethereum, Base, Arbitrum, Robinhood Chain, Arc): `0xcDcC4656293424544F32BfA58089e982B9624866`
+- **Solana:** `94TmHVSd6ZWc9cAWKysQXQ5hGaymBvkQVEgaTtLVyHt8`
+- ⚡ **Trade on GMGN:** instant fills, multi-chain support (Robinhood Chain, Solana, Base, BSC, Ethereum), live charts and smart-money tracking. Sign up with [this referral link](https://gmgn.ai/r/sZ5uzVHs?chain=robinhood) to support the project. The chart links in the tool use the same referral.
+
+---
+
+<details>
+<summary><b>For developers</b></summary>
+
+### How it works
+
+- **Finding tokens:** the Blockscout Pro API lists the wallet's tokens. The official Robinhood stock list and the Bucket price-feed tokens are also checked directly on-chain, so an indexing gap can't hide them. Robinhood stock tokens are type `ERC-8056` in Blockscout, so the scan accepts every fungible type, not just `ERC-20`.
+- **Balances and routes:** one multicall reads every balance and checks the router registries (`StockRouterUsdg.isRegistered`, `Treasury.isRegistered`). Tokens those routers don't support are checked for Uniswap v3 pools with real liquidity (direct to WETH, or via USDG). At sale time every path is quoted and the one returning the most ETH is used.
+- **Selling:** approve the exact amount, simulate for a live quote, then send with `minAmountOut` set to the quote minus the slippage limit.
+- **Prices:** the Bucket indexer feed, Blockscout, and the BUCKET/ETH Uniswap v4 pool. Prices are for display only; sales use live on-chain quotes.
+- **Saved key:** `wallet.keystore.json`, Web3 Secret Storage v3 (scrypt + AES-128-CTR). Compatible with MetaMask, geth and ethers (checked in the tests).
+
+### Contracts
+
+| Contract | Address |
+| :--- | :--- |
+| BucketRouter | `0x35f9D5187A37003CEc81B630b3d378BA55C364Ea` |
+| StockRouterUsdg | `0x716f97Dd8e4A6DE04327e5A34a6B03f934905d6e` |
+| StockRouterDirect | `0xbdA740412082BEf923131a3303c024a06E3a77Ec` |
+| Treasury | `0xe211898a898e5788878C91A1e458F3FFF3A8dD92` |
+| Uniswap v3 SwapRouter02 | `0xCaf681a66D020601342297493863E78C959E5cb2` |
+| Uniswap v3 QuoterV2 | `0x33e885eD0Ec9bF04EcfB19341582aADCb4c8A9E7` |
+
+### Options
+
+```
+--dry-run            Simulate everything, never sign or send
+--slippage <pct>     Max price movement for sells (default 2)
+--max-impact <pct>   Skip a sale if its quote is this far below the market (default 15)
+--setup              Run the setup wizard again
+--reset              Remove saved settings and the saved key
+```
+
+Advanced settings (such as `RPC_URL` for a private RPC provider) are in [`.env.example`](./.env.example).
+
+### Network
+
+| | |
+| :--- | :--- |
+| Chain | Robinhood Chain, ID `4663` (Arbitrum Orbit L2) |
+| RPC | `https://rpc.mainnet.chain.robinhood.com` |
+| Explorer | [robin.etherscan.io](https://robin.etherscan.io) |
+
+### Development
+
 ```bash
 npm install
-npm start
+npm test           # unit tests
+npm run typecheck
 ```
 
-### 3. Workflow
-1. **Mode Selection**: Choose between `Transfer / Sweep Assets`, `Batch Sell to ETH`, `Sell & Sweep`, or `Burn / Discard to Dead Address`.
-2. **Destination Address**: Enter the target recipient address, confirm the `.env` default with `[Enter]`, or type `"dead"` to burn.
-3. **Interactive Selection**: Toggle the assets you want to process using `[Space]`.
-4. **Amount Configuration & GMGN Verification**: Review the complete contract address and clickable [GMGN.ai](https://gmgn.ai) chart link for each token, then choose `100% (Max)` or specify custom quantities.
-5. **Plan Preview & Confirmation**: Review estimated USD values, gas reserve calculations, and execution routes before confirming.
-6. **Execution**: Transactions are signed locally and broadcast sequentially with live hash and explorer links.
+Code layout: `src/scan` finds tokens and prices, `src/actions` sends, sells and burns, `src/ui` draws the screens, `src/keystore.ts` handles the saved key.
+
+</details>
 
 ---
 
-## 🔒 Security, Privacy & Local Key Management
-
-* 🛡️ **100% Open-Source & Auditable**: No compiled binaries, minified bundles, or obfuscated code. Every line of TypeScript is cleanly laid out in [`src/`](./src) so you can inspect every transaction handler and network call before running.
-* 🔐 **Local-Only In-Memory Signing (`secp256k1`)**: All transaction payloads are constructed, serialized, and signed in-memory on your local machine using [`viem`](https://viem.sh). Your raw private key **never** leaves your local environment.
-* 🚫 **Zero Telemetry & No Key Exfiltration**: The script only makes standard JSON-RPC calls to official Robinhood nodes and read-only queries to Blockscout / indexers. Zero telemetry services, external trackers, or third-party servers.
-* 🛑 **Exact Allowance Approvals**: Token approvals for DEX routers are strictly scoped to the exact required routers when executing swaps.
-* 📁 **Strict Git Protection**: The repository's [`.gitignore`](.gitignore) strictly prevents `.env`, secrets, and personal [`custom-tokens.json`](custom-tokens.json) from ever being staged or committed.
-
----
-
-## 💖 Support & Donations
-
-If this tool helped you manage your assets or save time, donations are appreciated:
-
-* **EVM** (Ethereum / Arbitrum / Base / Polygon / Robinhood Chain):
-  ```
-  0xcDcC4656293424544F32BfA58089e982B9624866
-  ```
-
-* **Solana**:
-  ```
-  94TmHVSd6ZWc9cAWKysQXQ5hGaymBvkQVEgaTtLVyHt8
-  ```
+*This software is provided as is, without warranty. You are responsible for the transactions you sign.*

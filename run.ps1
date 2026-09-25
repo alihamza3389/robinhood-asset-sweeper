@@ -1,56 +1,39 @@
-# Robinhood Chain Multi-Asset Sweeper and Batch Seller (PowerShell Launcher)
+# PowerShell launcher. Any arguments are passed through (e.g. .\run.ps1 --dry-run).
+#
+# If Windows says "running scripts is disabled on this system" or "not digitally signed", either
+# double-click run.bat instead, or run:
+#   powershell -ExecutionPolicy Bypass -File .\run.ps1
 
-Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host " Robinhood Chain Multi-Asset Sweeper and Batch Seller" -ForegroundColor Green
-Write-Host "================================================================" -ForegroundColor Cyan
+Set-Location -LiteralPath $PSScriptRoot
+
+Write-Host "Robinhood Chain Asset Sweeper" -ForegroundColor Green
 Write-Host ""
 
-# 1. Check if Node.js is installed
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-    Write-Host "[ERROR] Node.js is not installed or not found in your PATH!" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Please download and install Node.js (LTS recommended) from:" -ForegroundColor Yellow
-    Write-Host "  https://nodejs.org" -ForegroundColor White
-    Write-Host ""
-    Write-Host "After installation, reopen your terminal and run this script again." -ForegroundColor Yellow
-    Write-Host ""
-    Read-Host "Press Enter to exit..."
+    Write-Host "Node.js is not installed. Install the LTS version from https://nodejs.org and run this again." -ForegroundColor Red
+    Read-Host "Press Enter to close"
     exit 1
 }
 
-# 2. Check if .env exists
-if (-not (Test-Path .env)) {
-    if (Test-Path .env.example) {
-        Write-Host "[.env missing] Creating .env from .env.example template..." -ForegroundColor Yellow
-        Copy-Item .env.example .env
-        Write-Host ""
-        Write-Host "[ACTION REQUIRED] A new .env file was created for you." -ForegroundColor Cyan
-        Write-Host "Please open .env in your text editor, enter your PRIVATE_KEY, and save it." -ForegroundColor Yellow
-        Write-Host ""
-        Read-Host "Press Enter after saving .env to continue..."
-    } else {
-        Write-Host "[WARNING] .env.example template was not found!" -ForegroundColor Yellow
-    }
+$major = [int](node -p "process.versions.node.split('.')[0]")
+if ($major -lt 20) {
+    Write-Host "Your Node.js version is too old. Please install version 20 or newer from https://nodejs.org" -ForegroundColor Red
+    Read-Host "Press Enter to close"
+    exit 1
 }
 
-# 3. Check dependencies
 if (-not (Test-Path node_modules)) {
-    Write-Host "[1/2] First-time setup: Installing required packages..." -ForegroundColor Cyan
-    npm install
+    Write-Host "First run: installing packages (this takes a few seconds)..." -ForegroundColor Cyan
+    npm install --no-audit --no-fund
     if ($LASTEXITCODE -ne 0) {
-        Write-Host ""
-        Write-Host "[ERROR] npm install failed. Please check your internet connection." -ForegroundColor Red
-        Read-Host "Press Enter to exit..."
+        Write-Host "Installing packages failed. Check your internet connection and try again." -ForegroundColor Red
+        Read-Host "Press Enter to close"
         exit 1
     }
-    Write-Host "[Dependencies installed successfully!]" -ForegroundColor Green
     Write-Host ""
 }
 
-# 4. Launch the application
-Write-Host "[2/2] Launching Sweeper and Batch Seller..." -ForegroundColor Green
-Write-Host ""
-npm start
+npm start --silent -- @args
 
 Write-Host ""
-Read-Host "Press Enter to exit..."
+Read-Host "Press Enter to close"

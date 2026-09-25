@@ -1,62 +1,39 @@
 @echo off
-setlocal enabledelayedexpansion
+REM One-click launcher for Windows. Double-click it, or run "run.bat --dry-run" from a terminal.
+setlocal
+cd /d "%~dp0"
 
-echo ================================================================
-echo  Robinhood Chain Multi-Asset Sweeper and Batch Seller
-echo ================================================================
+echo Robinhood Chain Asset Sweeper
 echo.
 
-REM Check if Node.js is installed
-node -v >nul 2>&1
+where node >nul 2>&1
 if errorlevel 1 goto :no_node
 
-REM Check if .env exists
-if not exist .env goto :create_env
-goto :check_modules
+for /f %%v in ('node -p "process.versions.node.split('.')[0]"') do set NODE_MAJOR=%%v
+if %NODE_MAJOR% LSS 20 goto :old_node
 
-:create_env
-if exist .env.example (
-    echo Creating .env from .env.example template...
-    copy .env.example .env >nul
-    echo.
-    echo [ACTION REQUIRED] A new .env file was created.
-    echo Open the .env file with Notepad, enter your PRIVATE_KEY, and save it.
-    echo.
-    pause
-)
-goto :check_modules
-
-:check_modules
-REM Install dependencies if node_modules is missing
-if not exist node_modules (
-    echo [1/2] First-time setup: Installing required packages...
-    call npm install
-    if errorlevel 1 (
-        echo.
-        echo [ERROR] Failed to install packages. Check your internet connection.
-        pause
-        exit /b 1
-    )
-    echo [Dependencies installed successfully!]
-    echo.
-)
-
-REM Launch the application
-echo [2/2] Launching Sweeper and Batch Seller...
+if exist node_modules goto :launch
+echo First run: installing packages (this takes a few seconds)...
+call npm install --no-audit --no-fund
+if errorlevel 1 goto :install_failed
 echo.
-call npm start
+
+:launch
+call npm start --silent -- %*
 goto :end
 
 :no_node
-echo [ERROR] Node.js is not installed or not in your system PATH!
+echo Node.js is not installed.
+echo Install the LTS version from https://nodejs.org, then double-click run.bat again.
+goto :end
+
+:old_node
+echo Your Node.js version is too old. Please install version 20 or newer from https://nodejs.org
+goto :end
+
+:install_failed
 echo.
-echo Please download and install Node.js LTS from:
-echo   https://nodejs.org
-echo.
-echo After installing Node.js, double-click run.bat again.
-echo.
-pause
-exit /b 1
+echo Installing packages failed. Check your internet connection and try again.
 
 :end
 echo.

@@ -10,6 +10,8 @@ dist/
 .env.*.local
 !.env.example
 custom-tokens.json
+wallet.keystore*.json
+.env.bak
 
 # Logs
 *.log
