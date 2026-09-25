@@ -187,25 +187,24 @@ async function main() {
   for (const w of scan.warnings) console.log(c.warn(`  ${sym.warn} ${w}`));
   printTokenList(assets);
 
-  // Manual additions (saved for next time only if they are real ERC-20s)
-  const manual = await promptManualTokens();
-  if (manual.length) {
-    const found = await addUniswapRoutes(publicClient, await readTokens(publicClient, sender, manual, stocks));
-    for (const addr of manual) {
-      const token = found.find((t) => t.address.toLowerCase() === addr.toLowerCase());
-      if (!token) {
-        console.log(c.danger(`  ${sym.fail} ${addr} is not a token contract, so it was not added.`));
-        continue;
-      }
-      saveCustomToken(token.address);
-      if (token.balance === 0n) {
-        console.log(c.dim(`  ${token.symbol}: you hold none right now. Saved, and it will be checked on future runs.`));
-      } else if (!assets.some((a) => a.kind === 'erc20' && a.address === token.address)) {
-        assets.push(withPrice(token, prices));
-        console.log(c.brand(`  ${sym.ok} Added ${token.symbol} (${formatAmount(token.balance, token.decimals)}). It will be remembered.`));
-      }
+  // Manual additions: each is checked and saved right away (only real tokens are saved),
+  // and saved tokens are checked on-chain on every future run.
+  await promptManualTokens(async (addr) => {
+    const [token] = await addUniswapRoutes(publicClient, await readTokens(publicClient, sender, [addr], stocks));
+    if (!token) {
+      console.log(c.danger(`  ${sym.fail} ${addr} is not a token contract, so it was not added.`));
+      return;
     }
-  }
+    saveCustomToken(token.address);
+    if (assets.some((a) => a.kind === 'erc20' && a.address === token.address)) {
+      console.log(c.dim(`  ${token.symbol} is already in the list. Saved, so it's always checked from now on.`));
+    } else if (token.balance === 0n) {
+      console.log(c.dim(`  ${token.symbol}: you hold none right now. Saved, and it will be checked on future runs.`));
+    } else {
+      assets.push(withPrice(label(token), prices));
+      console.log(c.brand(`  ${sym.ok} Added ${token.symbol} (${formatAmount(token.balance, token.decimals)}). It will be remembered.`));
+    }
+  });
 
   assets = assets.sort((a, b) => (usdValue(b) ?? -1) - (usdValue(a) ?? -1));
   const { eligible, excluded } = eligibleFor(mode, assets);

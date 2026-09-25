@@ -57,22 +57,23 @@ export async function promptDestination(sender: Address, fallback?: Address): Pr
   return getAddress(value.trim());
 }
 
-export async function promptManualTokens(): Promise<Address[]> {
-  const out: Address[] = [];
+/** Asks for missing token addresses one at a time; `add` checks and saves each one right away. */
+export async function promptManualTokens(add: (token: Address) => Promise<void>): Promise<void> {
   const wants = await confirm({
     message: 'Is a token missing from this list? Add it by its contract address?',
     default: false,
     theme: promptTheme,
   });
-  if (!wants) return out;
-  for (;;) {
+  if (!wants) return;
+  for (let first = true; ; first = false) {
     const value = await input({
-      message: 'Token contract address (press Enter when done):',
+      message: first ? 'Token contract address:' : 'Another token address (or press Enter to continue):',
       theme: promptTheme,
-      validate: (v) => (v.trim() === '' || isAddress(v.trim()) ? true : 'That is not a contract address (0x + 40 characters)'),
+      validate: (v) =>
+        (v.trim() === '' && !first) || isAddress(v.trim()) ? true : 'That is not a contract address (0x + 40 characters)',
     });
-    if (value.trim() === '') return out;
-    out.push(getAddress(value.trim()));
+    if (value.trim() === '') return;
+    await add(getAddress(value.trim()));
   }
 }
 

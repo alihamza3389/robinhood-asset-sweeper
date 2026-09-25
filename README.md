@@ -29,7 +29,7 @@ It's made for people who are **not** developers. If you can copy and paste, you 
 
 ## Why this exists
 
-[**Bucket Shop**](https://bucket.markets) ([@RealBucketShop](https://x.com/RealBucketShop)) pays its fee rewards straight into holders' wallets, spread across **anywhere from 1 to 20 different assets**: crypto tokens and tokenized stocks like AAPL, NVDA or GLD.
+[**Bucket Shop**](https://www.bucketmarkets.com/) ([@RealBucketShop](https://x.com/RealBucketShop)) pays its fee rewards straight into holders' wallets, spread across **anywhere from 1 to 20 different assets**: crypto tokens and tokenized stocks like AAPL, NVDA or GLD.
 
 That's great, until your wallet is full of dozens of tiny reward positions. Cashing them out one by one, on different sites, with an approval and a swap for each, takes ages and costs a fee every time.
 
