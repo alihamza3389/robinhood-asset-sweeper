@@ -1,5 +1,7 @@
 import { Hex, decodeFunctionResult, encodeFunctionData } from 'viem';
-import { erc20Abi, routerAbi, uniswapAbi, wethAbi } from '../chain.js';
+import { erc20Abi, permit2Abi, routerAbi, uniswapAbi, v4Abi, wethAbi } from '../chain.js';
+import { UNISWAP_V4 } from '../constants.js';
+import { bestV4Quote, buildV4Sell } from '../scan/uniswapV4.js';
 import { bestQuote } from '../scan/uniswap.js';
 import { routerAddress } from '../scan/registry.js';
 import { ActionResult, TokenAsset } from '../types.js';
@@ -26,7 +28,7 @@ async function simulateSwap(
   uniPath?: Hex
 ) {
   const { publicClient, walletClient, owner } = ctx;
-  if (token.route === 'NONE' || token.route === 'UNWRAP') throw new Error('Token has no swap route');
+  if (token.route === 'NONE' || token.route === 'UNWRAP' || token.route === 'UNIV4') throw new Error('Token has no swap route');
   const address = routerAddress(token.route);
   const account = walletClient.account;
   if (token.route === 'UNIV3') {
@@ -133,6 +135,101 @@ async function unwrapWeth(ctx: ActionContext, token: TokenAsset, amount: bigint,
   }
 }
 
+/** Approve `spender` for exactly `amount` of `token` (resetting to 0 first if needed). */
+async function approveExact(ctx: ActionContext, token: TokenAsset, spender: `0x${string}`, current: bigint, amount: bigint) {
+  const { publicClient, walletClient } = ctx;
+  // Some tokens refuse to change a non-zero allowance directly; reset to zero first for those.
+  if (current > 0n) {
+    const reset = await walletClient.writeContract({ address: token.address, abi: erc20Abi, functionName: 'approve', args: [spender, 0n] });
+    await waitForSuccess(publicClient, reset);
+  }
+  const hash = await walletClient.writeContract({ address: token.address, abi: erc20Abi, functionName: 'approve', args: [spender, amount] });
+  await waitForSuccess(publicClient, hash);
+}
+
+/**
+ * Sell through a Uniswap v4 pool (token/ETH) using the Universal Router.
+ * Approvals stay exact: the token approves Permit2 for exactly `amountIn`, and Permit2 lets the
+ * router spend exactly `amountIn` for 10 minutes. The quote comes from the official V4Quoter.
+ */
+async function sellViaV4(
+  ctx: ActionContext,
+  token: TokenAsset,
+  amount: bigint,
+  max: boolean,
+  opts: SellOptions
+): Promise<ActionResult> {
+  const { publicClient, walletClient, owner } = ctx;
+  const { PERMIT2, UNIVERSAL_ROUTER } = UNISWAP_V4;
+  try {
+    const [balance, erc20Allowance, permit] = await Promise.all([
+      publicClient.readContract({ address: token.address, abi: erc20Abi, functionName: 'balanceOf', args: [owner] }),
+      publicClient.readContract({ address: token.address, abi: erc20Abi, functionName: 'allowance', args: [owner, PERMIT2] }),
+      publicClient.readContract({ address: PERMIT2, abi: permit2Abi, functionName: 'allowance', args: [owner, token.address, UNIVERSAL_ROUTER] }),
+    ]);
+    const amountIn = max ? balance : amount;
+    if (amountIn <= 0n) return { asset: token, status: 'skipped', message: 'Zero balance' };
+    if (amountIn > balance) return { asset: token, status: 'failed', message: 'Amount exceeds current balance' };
+
+    ctx.onStatus?.(`Finding the best Uniswap price for ${token.symbol}…`);
+    const best = await bestV4Quote(publicClient, token.v4Pools ?? [], amountIn);
+    if (!best) return { asset: token, status: 'failed', message: 'No Uniswap pool can take this amount right now' };
+    const skip = tooFarBelowMarket(token, best.amountOut, amountIn, opts);
+    if (skip) return skip;
+
+    const now = Math.floor(Date.now() / 1000);
+    const [permitAmount, permitExpiry] = permit;
+    const needErc20 = erc20Allowance !== amountIn;
+    const needPermit = permitAmount !== amountIn || permitExpiry < now + 60;
+    if (needErc20 || needPermit) {
+      if (ctx.dryRun) {
+        return {
+          asset: token,
+          status: 'simulated',
+          amount: amountIn,
+          proceeds: best.amountOut,
+          message: 'Would approve the exact amount (via Permit2), then swap on Uniswap',
+        };
+      }
+      ctx.onStatus?.(`Approving ${token.symbol} for the exact amount…`);
+      if (needErc20) await approveExact(ctx, token, PERMIT2, erc20Allowance, amountIn);
+      if (needPermit) {
+        const hash = await walletClient.writeContract({
+          address: PERMIT2,
+          abi: permit2Abi,
+          functionName: 'approve',
+          args: [token.address, UNIVERSAL_ROUTER, amountIn, now + 600],
+        });
+        await waitForSuccess(publicClient, hash);
+      }
+    }
+
+    const minOut = applySlippage(best.amountOut, opts.slippagePercent);
+    const { commands, inputs } = buildV4Sell(best.key, amountIn, minOut);
+    const deadline = BigInt(Math.floor(Date.now() / 1000)) + DEADLINE_SECONDS;
+    const { request } = await publicClient.simulateContract({
+      account: walletClient.account,
+      address: UNIVERSAL_ROUTER,
+      abi: v4Abi,
+      functionName: 'execute',
+      args: [commands, inputs, deadline],
+    });
+    if (ctx.dryRun) {
+      return { asset: token, status: 'simulated', amount: amountIn, proceeds: best.amountOut, message: 'Swap simulation passed' };
+    }
+
+    const before = await publicClient.getBalance({ address: owner });
+    ctx.onStatus?.(`Swapping ${token.symbol} → ETH (min ${opts.slippagePercent}% slippage guard)…`);
+    const hash = await walletClient.writeContract(request);
+    const receipt = await waitForSuccess(publicClient, hash);
+    const after = await publicClient.getBalance({ address: owner, blockNumber: receipt.blockNumber });
+    const received = after - before + receipt.gasUsed * receipt.effectiveGasPrice;
+    return { asset: token, status: 'success', amount: amountIn, txHash: hash, proceeds: received > 0n ? received : undefined };
+  } catch (err) {
+    return { asset: token, status: 'failed', message: describeError(err) };
+  }
+}
+
 export async function sellToken(
   ctx: ActionContext,
   token: TokenAsset,
@@ -144,6 +241,7 @@ export async function sellToken(
   const { publicClient, walletClient, owner } = ctx;
   if (token.route === 'NONE') return { asset: token, status: 'skipped', message: 'No DEX route for this token' };
   if (token.route === 'UNWRAP') return unwrapWeth(ctx, token, amount, max);
+  if (token.route === 'UNIV4') return sellViaV4(ctx, token, amount, max, opts);
   const router = routerAddress(token.route);
 
   try {

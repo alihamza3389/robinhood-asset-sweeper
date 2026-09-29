@@ -46,7 +46,12 @@ export function parseTokenItems(data: unknown): IndexedToken[] {
 
 /** GET a Blockscout Pro API path. Throws BlockscoutKeyError for a missing or rejected key. */
 export async function blockscoutGet(chainId: number, apiKey: string, pathAndQuery: string): Promise<unknown> {
-  const url = new URL(`${API.blockscoutPro(chainId)}${pathAndQuery}`);
+  return blockscoutRaw(chainId, apiKey, `/api/v2${pathAndQuery}`);
+}
+
+/** GET any Blockscout Pro path for a chain, e.g. `/api/v2/...` or the Etherscan-style `/api?module=...`. */
+export async function blockscoutRaw(chainId: number, apiKey: string, pathAndQuery: string): Promise<unknown> {
+  const url = new URL(`${API.blockscoutPro(chainId).replace(/\/api\/v2$/, '')}${pathAndQuery}`);
   url.searchParams.set('apikey', apiKey);
   const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(15_000) });
   if (res.status === 401 || res.status === 402 || res.status === 403) {

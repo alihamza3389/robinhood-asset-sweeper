@@ -9,7 +9,7 @@ export function assetNote(asset: Asset): string {
   const parts: string[] = [];
   if (asset.flags.robinhoodStock) parts.push('stock');
   if (asset.route === 'NONE') parts.push('not sellable here');
-  else if (asset.route === 'UNIV3') parts.push('sellable (Uniswap)');
+  else if (asset.route === 'UNIV3' || asset.route === 'UNIV4') parts.push('sellable (Uniswap)');
   else parts.push('sellable');
   return c.dim(parts.join(', '));
 }

@@ -10,7 +10,7 @@ import { Asset, ActionResult, OperationMode, TokenAsset } from './types.js';
 import { loadCustomTokens, saveCustomToken } from './scan/customTokens.js';
 import { fetchRobinhoodStocks } from './scan/registry.js';
 import { fetchPrices, PriceBook } from './scan/prices.js';
-import { addUniswapRoutes, readTokens, scanWallet, ScanResult } from './scan/wallet.js';
+import { addDexRoutes, readTokens, scanWallet, ScanResult } from './scan/wallet.js';
 import { BlockscoutKeyError } from './scan/blockscout.js';
 import { ActionContext, describeError } from './actions/context.js';
 import { sendNative, transferToken } from './actions/transfer.js';
@@ -173,6 +173,8 @@ async function main() {
   spinner.stop();
   // Blockscout prices fill any gaps in the Bucket feed.
   for (const [addr, usd] of scan.indexerPrices) if (!prices.tokens.has(addr)) prices.tokens.set(addr, usd);
+  // Tokens priced only by their Uniswap v4 pool (e.g. launchpad tokens).
+  if (prices.ethUsd) for (const [addr, eth] of scan.poolPrices) if (!prices.tokens.has(addr)) prices.tokens.set(addr, eth * prices.ethUsd);
   const label = (t: TokenAsset): TokenAsset => ({
     ...t,
     flags: { ...t.flags, robinhoodStock: stocks.has(t.address.toLowerCase()) },
@@ -190,7 +192,9 @@ async function main() {
   // Manual additions: each is checked and saved right away (only real tokens are saved),
   // and saved tokens are checked on-chain on every future run.
   await promptManualTokens(async (addr) => {
-    const [token] = await addUniswapRoutes(publicClient, await readTokens(publicClient, sender, [addr], stocks));
+    const routed = await addDexRoutes(publicClient, await readTokens(publicClient, sender, [addr], stocks), config.chainId, config.blockscoutApiKey);
+    for (const [a, eth] of routed.ethPerToken) if (prices.ethUsd && !prices.tokens.has(a)) prices.tokens.set(a, eth * prices.ethUsd);
+    const [token] = routed.tokens;
     if (!token) {
       console.log(c.danger(`  ${sym.fail} ${addr} is not a token contract, so it was not added.`));
       return;

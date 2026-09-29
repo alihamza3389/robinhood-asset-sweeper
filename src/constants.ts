@@ -47,6 +47,18 @@ export const UNISWAP_V3 = {
   MIN_USDG: 25_000_000n, // 25 USDG (6 decimals)
 } as const;
 
+// Uniswap v4 on Robinhood Chain: used for tokens that trade in v4 pools (e.g. Pons launchpad tokens like ROB).
+// All matched to the PoolManager the live pools use, and read from verified source code:
+// the Universal Router with ~29M transactions (built on the standard Permit2), and the V4Quoter.
+export const UNISWAP_V4 = {
+  POOL_MANAGER: getAddress('0x8366a39CC670B4001A1121B8F6A443A643e40951'),
+  UNIVERSAL_ROUTER: getAddress('0x8876789976dEcBfCbBbe364623C63652db8C0904'),
+  QUOTER: getAddress('0x55083D93eAdff4E1875E5489986Ad56806883139'),
+  PERMIT2: getAddress('0x000000000022D473030F116dDEE9F6B43aC78BA3'),
+  /** PoolManager Initialize(id, currency0, currency1, fee, tickSpacing, hooks, sqrtPriceX96, tick) */
+  INITIALIZE_TOPIC: '0xdd466e674ea557f56295e2d0218a125ea4b4f0f6f3307b95f85e6110838d6438',
+} as const;
+
 export const BUCKET_POOL_ID = '0x8857c1a180b5483c98d38f4d62db5866de2f91b737513347283f55e446424ce3' as const;
 
 /** Fallback if the official Robinhood token list can't be downloaded. Always checked on-chain. */

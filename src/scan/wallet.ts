@@ -5,6 +5,7 @@ import { PublicClient, erc20Abi, registryAbi } from '../chain.js';
 import { fetchIndexedTokens } from './blockscout.js';
 import { pickRoute } from './registry.js';
 import { findUniswapPaths } from './uniswap.js';
+import { findV4Pools, V4Found } from './uniswapV4.js';
 
 /**
  * Token names come from arbitrary contracts. Strip control and bidi-override characters so a
@@ -80,15 +81,36 @@ async function nonZeroBalances(publicClient: PublicClient, owner: Address, token
   return tokens.filter((_, i) => res[i].status === 'success' && (res[i].result as bigint) > 0n);
 }
 
-/** Tokens the Bucket routers can't sell may still trade on Uniswap v3: give those a UNIV3 route. */
-export async function addUniswapRoutes(publicClient: PublicClient, tokens: TokenAsset[]): Promise<TokenAsset[]> {
+/**
+ * Tokens the Bucket routers can't sell may still trade on Uniswap: try v3 (token -> WETH/USDG pools),
+ * then v4 (token/ETH pools, found through Blockscout). Also returns v4 pool prices (ETH per token).
+ */
+export async function addDexRoutes(
+  publicClient: PublicClient,
+  tokens: TokenAsset[],
+  chainId: number,
+  apiKey: string
+): Promise<{ tokens: TokenAsset[]; ethPerToken: Map<string, number> }> {
+  const ethPerToken = new Map<string, number>();
   const unrouted = tokens.filter((t) => t.route === 'NONE').map((t) => t.address);
-  if (unrouted.length === 0) return tokens;
+  if (unrouted.length === 0) return { tokens, ethPerToken };
+
   const uniPaths = await findUniswapPaths(publicClient, unrouted).catch(() => new Map<string, `0x${string}`[]>());
-  return tokens.map((t) => {
+  tokens = tokens.map((t) => {
     const paths = uniPaths.get(t.address.toLowerCase());
     return t.route === 'NONE' && paths?.length ? { ...t, route: 'UNIV3' as const, uniPaths: paths } : t;
   });
+
+  const stillUnrouted = tokens.filter((t) => t.route === 'NONE');
+  if (stillUnrouted.length === 0) return { tokens, ethPerToken };
+  const v4 = await findV4Pools(publicClient, chainId, apiKey, stillUnrouted).catch(() => new Map<string, V4Found>());
+  tokens = tokens.map((t) => {
+    const found = v4.get(t.address.toLowerCase());
+    if (t.route !== 'NONE' || !found?.pools.length) return t;
+    if (found.ethPerToken) ethPerToken.set(t.address.toLowerCase(), found.ethPerToken);
+    return { ...t, route: 'UNIV4' as const, v4Pools: found.pools };
+  });
+  return { tokens, ethPerToken };
 }
 
 export interface ScanResult {
@@ -96,6 +118,8 @@ export interface ScanResult {
   tokens: TokenAsset[];
   /** USD prices Blockscout reported for tokens (lowercase address -> USD). */
   indexerPrices: Map<string, number>;
+  /** Mid prices from Uniswap v4 pools, ETH per whole token (lowercase address). */
+  poolPrices: Map<string, number>;
   /** Problems worth telling the user about (the scan still completed). */
   warnings: string[];
 }
@@ -136,7 +160,8 @@ export async function scanWallet(opts: {
     .filter((t) => t.balance > 0n)
     .map((t) => ({ ...t, flags: { ...t.flags, spam: spam.has(t.address.toLowerCase()) } }));
 
-  tokens = await addUniswapRoutes(publicClient, tokens);
+  const routed = await addDexRoutes(publicClient, tokens, config.chainId, opts.apiKey);
+  tokens = routed.tokens;
 
-  return { native, tokens, indexerPrices, warnings };
+  return { native, tokens, indexerPrices, poolPrices: routed.ethPerToken, warnings };
 }

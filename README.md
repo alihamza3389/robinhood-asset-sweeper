@@ -21,7 +21,7 @@ It's made for people who are **not** developers. If you can copy and paste, you 
 | Option | What happens |
 | :--- | :--- |
 | 📤 **Send to another wallet** | Moves tokens and/or ETH to another address, like your main wallet. |
-| 💱 **Sell tokens for ETH** | Sells your tokens (BUCKET, tokenized stocks like AAPL or NVDA, reward tokens, and more) for ETH. The ETH stays in your wallet. |
+| 💱 **Sell tokens for ETH** | Sells your tokens (BUCKET, tokenized stocks like AAPL or NVDA, reward tokens, launchpad tokens like ROB, and more) for ETH. The ETH stays in your wallet. |
 | 🧹 **Sell everything, then send the ETH** | Sells your tokens, then sends all the ETH to another address in one go. |
 | 🔥 **Get rid of spam tokens** | Sends junk or scam tokens to a burn address so they stop cluttering your wallet. |
 
@@ -48,7 +48,7 @@ Version 3 is a full rewrite, focused on safety and on being easy for anyone to u
 - Your key can be **saved locked with a password**, so you don't paste it every time
 - Sales are **price-protected** and use **exact approvals only**
 - **Practice mode** to try everything without sending anything
-- Finds **tokenized stocks** correctly, and can sell tokens like **GLD through Uniswap**
+- Finds **tokenized stocks** correctly, and sells tokens like **GLD and ROB through Uniswap** (v3 and v4)
 - A **summary and chart links** before anything is sent
 
 ---
@@ -185,6 +185,9 @@ Run the setup again (`run.bat --setup`, `.\run.ps1 --setup` or `./run.sh --setup
 **"This wallet has no ETH"**
 Every transaction needs a tiny bit of ETH on Robinhood Chain to pay the network fee. A dollar or two covers many transactions.
 
+**"The Robinhood Chain RPC is temporarily limiting requests"**
+The public network connection is busy or has briefly limited your internet connection. Wait a few minutes and start the tool again. If it happens often, you can use a private RPC provider: set `RPC_URL` in your `.env` file.
+
 **A token says "not sellable here"**
 There's nowhere to sell it on Robinhood Chain right now (no market with enough trading). You can still send it or burn it.
 
@@ -223,7 +226,7 @@ This tool is free. If it saved you time or money, tips are appreciated:
 ### How it works
 
 - **Finding tokens:** the Blockscout Pro API lists the wallet's tokens. The official Robinhood stock list and the Bucket price-feed tokens are also checked directly on-chain, so an indexing gap can't hide them. Robinhood stock tokens are type `ERC-8056` in Blockscout, so the scan accepts every fungible type, not just `ERC-20`.
-- **Balances and routes:** one multicall reads every balance and checks the router registries (`StockRouterUsdg.isRegistered`, `Treasury.isRegistered`). Tokens those routers don't support are checked for Uniswap v3 pools with real liquidity (direct to WETH, or via USDG). At sale time every path is quoted and the one returning the most ETH is used.
+- **Balances and routes:** one multicall reads every balance and checks the router registries (`StockRouterUsdg.isRegistered`, `Treasury.isRegistered`). Tokens those routers don't support are checked for Uniswap v3 pools with real liquidity (direct to WETH, or via USDG), then for Uniswap v4 token/ETH pools (found through the PoolManager's `Initialize` events on Blockscout; this covers launchpad tokens such as Pons launches). At sale time every path or pool is quoted and the one returning the most ETH is used. v4 sales go through the Universal Router with exact-amount Permit2 approvals that expire after 10 minutes.
 - **Selling:** approve the exact amount, simulate for a live quote, then send with `minAmountOut` set to the quote minus the slippage limit.
 - **Prices:** the Bucket indexer feed, Blockscout, and the BUCKET/ETH Uniswap v4 pool. Prices are for display only; sales use live on-chain quotes.
 - **Saved key:** `wallet.keystore.json`, Web3 Secret Storage v3 (scrypt + AES-128-CTR). Compatible with MetaMask, geth and ethers (checked in the tests).
@@ -238,6 +241,10 @@ This tool is free. If it saved you time or money, tips are appreciated:
 | Treasury | `0xe211898a898e5788878C91A1e458F3FFF3A8dD92` |
 | Uniswap v3 SwapRouter02 | `0xCaf681a66D020601342297493863E78C959E5cb2` |
 | Uniswap v3 QuoterV2 | `0x33e885eD0Ec9bF04EcfB19341582aADCb4c8A9E7` |
+| Uniswap v4 PoolManager | `0x8366a39CC670B4001A1121B8F6A443A643e40951` |
+| Uniswap Universal Router | `0x8876789976dEcBfCbBbe364623C63652db8C0904` |
+| Uniswap V4Quoter | `0x55083D93eAdff4E1875E5489986Ad56806883139` |
+| Permit2 | `0x000000000022D473030F116dDEE9F6B43aC78BA3` |
 
 ### Options
 

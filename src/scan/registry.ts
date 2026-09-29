@@ -17,7 +17,7 @@ export function pickRoute(token: Address, registered: { usdg: boolean; treasury:
   return 'NONE';
 }
 
-export function routerAddress(route: Exclude<SellRoute, 'NONE' | 'UNWRAP'>): Address {
+export function routerAddress(route: Exclude<SellRoute, 'NONE' | 'UNWRAP' | 'UNIV4'>): Address {
   switch (route) {
     case 'BUCKET':
       return CONTRACTS.BUCKET_ROUTER;

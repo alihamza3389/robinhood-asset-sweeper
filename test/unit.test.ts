@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { getAddress, parseEther } from 'viem';
+import { decodeAbiParameters, getAddress, HttpRequestError, parseEther, zeroAddress } from 'viem';
+import { describeError } from '../src/actions/context.js';
 import { applySlippage, priceImpactPercent } from '../src/actions/sell.js';
 import { maxSendable } from '../src/actions/transfer.js';
 import { BlockscoutKeyError, fetchIndexedTokens, parseTokenItems } from '../src/scan/blockscout.js';
@@ -10,6 +11,7 @@ import { formatAmount, formatUsd } from '../src/ui/format.js';
 import { cleanText } from '../src/scan/wallet.js';
 import { detectFancy } from '../src/ui/theme.js';
 import { encodePath } from '../src/scan/uniswap.js';
+import { buildV4Sell, ethPerTokenFromSqrtPrice, parseInitializeLog, poolId } from '../src/scan/uniswapV4.js';
 import { decryptKey, encryptKey, KeystoreV3, keystoreBackups, saveKeystore, WrongPasswordError } from '../src/keystore.js';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -224,4 +226,48 @@ test('terminal style: Windows 11 gets the full style, Windows 10 without WT fall
   assert.equal(detectFancy({}, 'win32', '10.0.19045'), false);
   assert.equal(detectFancy({ WT_SESSION: 'x' }, 'win32', '10.0.19045'), true);
   assert.equal(detectFancy({ SWEEPER_PLAIN: '1' }, 'win32', '10.0.22631'), false);
+});
+
+test('Uniswap v4: parses a pool Initialize log (ROB/ETH pool)', () => {
+  const pad = (a: string) => '0x' + a.slice(2).toLowerCase().padStart(64, '0');
+  const parsed = parseInitializeLog({
+    topics: ['0xdd466e674ea557f56295e2d0218a125ea4b4f0f6f3307b95f85e6110838d6438', '0xa4de46ccc07c02a449dbb4f0ac3b65b921ad7f3a564f2073c99e117010737ff5', pad('0x0000000000000000000000000000000000000000'), pad('0x327a1184edfb3b0d7d137fce4318b85af77e91e2')],
+    data: '0x' + [0n, 200n, BigInt('0xe5e702641ea86f4ae6cc3cdaed2b886f976be044'), 1n, 0n].map((v) => v.toString(16).padStart(64, '0')).join(''),
+  })!;
+  assert.equal(parsed.key.currency1, '0x327A1184edfb3b0d7d137fCE4318B85af77E91e2');
+  assert.equal(parsed.key.fee, 0);
+  assert.equal(parsed.key.tickSpacing, 200);
+  assert.equal(parsed.key.hooks, '0xE5e702641Ea86F4ae6cC3cDaeD2B886f976Be044');
+  // the pool id is the hash of the key, and must match the id in the log
+  assert.equal(poolId(parsed.key), parsed.id);
+});
+
+test('Uniswap v4: negative tick spacing and price math', () => {
+  const parsed = parseInitializeLog({
+    topics: ['0x', '0x01', '0x' + '0'.repeat(64), '0x' + '0'.repeat(24) + '11'.repeat(20)],
+    data: '0x' + ['0bb8', 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc4', '00'].map((w) => w.padStart(64, '0')).join(''),
+  })!;
+  assert.equal(parsed.key.fee, 3000);
+  assert.equal(parsed.key.tickSpacing, -60);
+  // sqrtPrice = 2^96 * 100 -> 10,000 tokens per ETH -> 0.0001 ETH per token (18 decimals)
+  assert.ok(Math.abs(ethPerTokenFromSqrtPrice(2n ** 96n * 100n, 18)! - 0.0001) < 1e-15);
+});
+
+test('Uniswap v4: sell input encodes swap, settle and take for the right currencies', () => {
+  const key = { currency0: zeroAddress, currency1: getAddress('0x327a1184edfb3b0d7d137fce4318b85af77e91e2'), fee: 0, tickSpacing: 200, hooks: getAddress('0xe5e702641ea86f4ae6cc3cdaed2b886f976be044') };
+  const { commands, inputs } = buildV4Sell(key, 1000n, 900n);
+  assert.equal(commands, '0x10');
+  const [actions, params] = decodeAbiParameters([{ type: 'bytes' }, { type: 'bytes[]' }], inputs[0]);
+  assert.equal(actions, '0x060c0f');
+  const [settleCurrency, settleMax] = decodeAbiParameters([{ type: 'address' }, { type: 'uint256' }], params[1]);
+  const [takeCurrency, takeMin] = decodeAbiParameters([{ type: 'address' }, { type: 'uint256' }], params[2]);
+  assert.equal(settleCurrency, key.currency1);
+  assert.equal(settleMax, 1000n);
+  assert.equal(takeCurrency, zeroAddress);
+  assert.equal(takeMin, 900n);
+});
+
+test('an RPC block (HTTP 403/429) gets a plain-English message', () => {
+  const err = new HttpRequestError({ url: 'https://rpc.example', status: 403, body: {}, details: 'Just a moment...' });
+  assert.match(describeError(err), /limiting requests/);
 });

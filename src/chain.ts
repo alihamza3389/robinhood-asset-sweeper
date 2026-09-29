@@ -57,4 +57,18 @@ export const uniswapAbi = parseAbi([
   'function multicall(uint256 deadline, bytes[] data) payable returns (bytes[] results)',
 ]);
 
+export const v4Abi = parseAbi([
+  'struct PoolKey { address currency0; address currency1; uint24 fee; int24 tickSpacing; address hooks; }',
+  'struct QuoteExactSingleParams { PoolKey poolKey; bool zeroForOne; uint128 exactAmount; bytes hookData; }',
+  'function quoteExactInputSingle(QuoteExactSingleParams params) returns (uint256 amountOut, uint256 gasEstimate)',
+  'function getSlot0(bytes32 poolId) view returns (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee)',
+  'function getLiquidity(bytes32 poolId) view returns (uint128 liquidity)',
+  'function execute(bytes commands, bytes[] inputs, uint256 deadline) payable',
+]);
+
+export const permit2Abi = parseAbi([
+  'function allowance(address user, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)',
+  'function approve(address token, address spender, uint160 amount, uint48 expiration)',
+]);
+
 export const wethAbi = parseAbi(['function withdraw(uint256 wad)']);

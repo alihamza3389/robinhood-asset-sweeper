@@ -1,4 +1,4 @@
-import { Address, BaseError, ContractFunctionRevertedError, Hash, WaitForTransactionReceiptTimeoutError } from 'viem';
+import { Address, BaseError, ContractFunctionRevertedError, Hash, HttpRequestError, WaitForTransactionReceiptTimeoutError } from 'viem';
 import { PublicClient, WalletClient } from '../chain.js';
 
 export interface ActionContext {
@@ -41,6 +41,13 @@ const KNOWN_ERRORS: Record<string, string> = {
 export function describeError(err: unknown): string {
   if (err instanceof TxRevertedError) return err.message;
   if (err instanceof BaseError) {
+    const http = err.walk((e) => e instanceof HttpRequestError);
+    if (http instanceof HttpRequestError && (http.status === 403 || http.status === 429)) {
+      return (
+        'The Robinhood Chain RPC is temporarily limiting requests from your connection. Wait a few minutes and try ' +
+        'again. If it keeps happening, set RPC_URL in .env to a private RPC provider.'
+      );
+    }
     const revert = err.walk((e) => e instanceof ContractFunctionRevertedError);
     if (revert instanceof ContractFunctionRevertedError) {
       const sig = revert.signature ?? revert.raw?.slice(0, 10);

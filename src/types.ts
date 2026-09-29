@@ -4,7 +4,16 @@ export type OperationMode = 'TRANSFER' | 'SELL' | 'SELL_AND_SWEEP' | 'BURN';
 
 /** Which router, if any, can turn this token into ETH. */
 /** UNWRAP: WETH, turned into ETH 1:1 by unwrapping. */
-export type SellRoute = 'BUCKET' | 'USDG' | 'DIRECT' | 'UNIV3' | 'UNWRAP' | 'NONE';
+export type SellRoute = 'BUCKET' | 'USDG' | 'DIRECT' | 'UNIV3' | 'UNIV4' | 'UNWRAP' | 'NONE';
+
+/** A Uniswap v4 pool: native ETH (currency0) paired with the token (currency1). */
+export interface V4PoolKey {
+  currency0: `0x${string}`;
+  currency1: `0x${string}`;
+  fee: number;
+  tickSpacing: number;
+  hooks: `0x${string}`;
+}
 
 export interface NativeAsset {
   kind: 'native';
@@ -25,6 +34,8 @@ export interface TokenAsset {
   route: SellRoute;
   /** Candidate Uniswap v3 paths to WETH, when route is UNIV3. The best is picked by a live quote. */
   uniPaths?: `0x${string}`[];
+  /** Candidate Uniswap v4 pools (token/ETH), when route is UNIV4. The best is picked by a live quote. */
+  v4Pools?: V4PoolKey[];
   /** Blockscout flagged it as spam, or it is a known Robinhood stock token. Purely informational. */
   flags: { spam?: boolean; robinhoodStock?: boolean };
   priceUsd?: number;
