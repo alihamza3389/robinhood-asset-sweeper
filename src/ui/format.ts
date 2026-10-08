@@ -12,7 +12,8 @@ export function formatAmount(raw: bigint, decimals: number, maxFraction = 6): st
   let keep = int.replace('-', '').length >= 4 ? 2 : maxFraction;
   if (int === '0' || int === '-0') {
     const firstNonZero = frac.search(/[1-9]/);
-    if (firstNonZero >= keep) keep = Math.min(firstNonZero + 3, decimals);
+    // Show 3 significant digits for values below 1 (0.00000499, not 0.000004).
+    if (firstNonZero >= 0) keep = Math.min(Math.max(keep, firstNonZero + 3), decimals);
   }
   const trimmed = frac.slice(0, keep).replace(/0+$/, '');
   return trimmed ? `${intFmt}.${trimmed}` : intFmt;

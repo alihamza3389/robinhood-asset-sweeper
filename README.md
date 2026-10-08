@@ -186,7 +186,7 @@ Run the setup again (`run.bat --setup`, `.\run.ps1 --setup` or `./run.sh --setup
 Every transaction needs a tiny bit of ETH on Robinhood Chain to pay the network fee. A dollar or two covers many transactions.
 
 **"The Robinhood Chain RPC is temporarily limiting requests"**
-The public network connection is busy or has briefly limited your internet connection. Wait a few minutes and start the tool again. If it happens often, you can use a private RPC provider: set `RPC_URL` in your `.env` file.
+The public network connection sometimes limits busy connections. The tool now switches to Blockscout's connection automatically when that happens (using the key you already set up), so you should rarely see this. If you still do, wait a few minutes and start the tool again, or set `RPC_URL` in your `.env` file to a private RPC provider.
 
 **A token says "not sellable here"**
 There's nowhere to sell it on Robinhood Chain right now (no market with enough trading). You can still send it or burn it.
@@ -228,6 +228,7 @@ This tool is free. If it saved you time or money, tips are appreciated:
 - **Finding tokens:** the Blockscout Pro API lists the wallet's tokens. The official Robinhood stock list and the Bucket price-feed tokens are also checked directly on-chain, so an indexing gap can't hide them. Robinhood stock tokens are type `ERC-8056` in Blockscout, so the scan accepts every fungible type, not just `ERC-20`.
 - **Balances and routes:** one multicall reads every balance and checks the router registries (`StockRouterUsdg.isRegistered`, `Treasury.isRegistered`). Tokens those routers don't support are checked for Uniswap v3 pools with real liquidity (direct to WETH, or via USDG), then for Uniswap v4 token/ETH pools (found through the PoolManager's `Initialize` events on Blockscout; this covers launchpad tokens such as Pons launches). At sale time every path or pool is quoted and the one returning the most ETH is used. v4 sales go through the Universal Router with exact-amount Permit2 approvals that expire after 10 minutes.
 - **Selling:** approve the exact amount, simulate for a live quote, then send with `minAmountOut` set to the quote minus the slippage limit.
+- **Network connection:** the public Robinhood Chain RPC, with an automatic switch to Blockscout's JSON-RPC (`/json-rpc`, same key) for a few minutes whenever the public RPC blocks or rate-limits. Nonces are tracked locally so back-to-back transactions never collide.
 - **Prices:** the Bucket indexer feed, Blockscout, and the BUCKET/ETH Uniswap v4 pool. Prices are for display only; sales use live on-chain quotes.
 - **Saved key:** `wallet.keystore.json`, Web3 Secret Storage v3 (scrypt + AES-128-CTR). Compatible with MetaMask, geth and ethers (checked in the tests).
 

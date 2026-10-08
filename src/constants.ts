@@ -97,6 +97,8 @@ export const DEAD_ADDRESS: Address = '0x000000000000000000000000000000000000dEaD
 
 export const API = {
   blockscoutPro: (chainId: number) => `https://api.blockscout.com/${chainId}/api/v2`,
+  /** Ethereum JSON-RPC served by Blockscout (backup when the public RPC limits requests). */
+  blockscoutRpc: (chainId: number) => `https://api.blockscout.com/${chainId}/json-rpc`,
   bucketPrices: 'https://indexer-api.bucket.markets/prices',
   robinhoodAssets: 'https://api.robinhood.com/rhj/assets',
 } as const;

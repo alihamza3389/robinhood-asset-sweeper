@@ -1,10 +1,91 @@
-import { createPublicClient, createWalletClient, defineChain, http, parseAbi } from 'viem';
+import {
+  createPublicClient,
+  createWalletClient,
+  custom,
+  defineChain,
+  http,
+  BaseError,
+  HttpRequestError,
+  nonceManager,
+  parseAbi,
+  RpcRequestError,
+  TimeoutError,
+  Transport,
+} from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { Config } from './types.js';
-import { CONTRACTS } from './constants.js';
+import { API, CONTRACTS } from './constants.js';
+
+/**
+ * Blockscout's JSON-RPC endpoint, used as a backup when the public RPC blocks or rate-limits.
+ * It needs a block tag on eth_estimateGas, which viem leaves out, so that is added here.
+ */
+export function blockscoutRpcTransport(chainId: number, apiKey: string): Transport {
+  const url = `${API.blockscoutRpc(chainId)}?apikey=${encodeURIComponent(apiKey)}`;
+  return custom(
+    {
+      async request({ method, params }: { method: string; params?: unknown }) {
+        let p = Array.isArray(params) ? params : [];
+        if (method === 'eth_estimateGas' && p.length === 1) p = [...p, 'latest'];
+        const body = { jsonrpc: '2.0', id: 1, method, params: p };
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (!res.ok) throw new HttpRequestError({ url: API.blockscoutRpc(chainId), status: res.status, body, details: res.statusText });
+        const json = (await res.json()) as { result?: unknown; error?: unknown };
+        if (json.error !== undefined) {
+          const error =
+            typeof json.error === 'string' ? { code: -32603, message: json.error } : (json.error as { code: number; message: string });
+          throw new RpcRequestError({ body, error, url: API.blockscoutRpc(chainId) });
+        }
+        return json.result;
+      },
+    },
+    { retryCount: 3, retryDelay: 500 }
+  );
+}
+
+const FAILOVER_MS = 5 * 60_000;
+
+/** Errors that mean "this RPC is refusing us right now", as opposed to a real answer like a revert. */
+export function isRpcUnavailable(err: unknown): boolean {
+  const http = err instanceof BaseError ? err.walk((e) => e instanceof HttpRequestError) : undefined;
+  if (http instanceof HttpRequestError) return http.status === undefined || http.status === 403 || http.status === 429 || http.status >= 500;
+  return err instanceof BaseError && err.walk((e) => e instanceof TimeoutError) instanceof TimeoutError;
+}
+
+/** Use `primary`; once it refuses us, use `backup` for a few minutes before trying `primary` again. */
+export function failover(primary: Transport, backup: Transport): Transport {
+  let backupUntil = 0;
+  return (opts) => {
+    const a = primary({ ...opts, retryCount: 0 });
+    const b = backup(opts);
+    return custom(
+      {
+        async request(args: { method: string; params?: unknown }) {
+          if (Date.now() >= backupUntil) {
+            try {
+              return await a.request(args);
+            } catch (err) {
+              if (!isRpcUnavailable(err)) throw err;
+              backupUntil = Date.now() + FAILOVER_MS;
+            }
+          }
+          return b.request(args);
+        },
+      },
+      { retryCount: 1 }
+    )(opts);
+  };
+}
 
 export function createClients(config: Config) {
-  const account = privateKeyToAccount(config.privateKey);
+  // The nonce is tracked locally after the first transaction, so back-to-back transactions
+  // (approve, then swap) never reuse a nonce even if a backup RPC reports a slightly stale count.
+  const account = privateKeyToAccount(config.privateKey, { nonceManager });
 
   const chain = defineChain({
     id: config.chainId,
@@ -15,8 +96,12 @@ export function createClients(config: Config) {
     contracts: { multicall3: { address: CONTRACTS.MULTICALL3 } },
   });
 
-  // The public RPC rate-limits bursts (HTTP 429); back off patiently instead of failing.
-  const transport = http(config.rpcUrl, { retryCount: 6, retryDelay: 400, timeout: 30_000 });
+  // The public RPC sometimes rate-limits or blocks a connection (HTTP 429/403). When it does, requests
+  // move to Blockscout's JSON-RPC (the user's existing key) for a few minutes, then the public RPC is tried again.
+  const primary = http(config.rpcUrl, { retryCount: 0, timeout: 20_000 });
+  const transport = config.blockscoutApiKey
+    ? failover(primary, blockscoutRpcTransport(config.chainId, config.blockscoutApiKey))
+    : http(config.rpcUrl, { retryCount: 6, retryDelay: 400, timeout: 30_000 });
   const publicClient = createPublicClient({ chain, transport, batch: { multicall: { batchSize: 16_384 } } });
   const walletClient = createWalletClient({ account, chain, transport });
 

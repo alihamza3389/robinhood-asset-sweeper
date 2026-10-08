@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeAbiParameters, getAddress, HttpRequestError, parseEther, zeroAddress } from 'viem';
+import { custom, decodeAbiParameters, getAddress, HttpRequestError, parseEther, RpcRequestError, zeroAddress } from 'viem';
+import { failover } from '../src/chain.js';
 import { describeError } from '../src/actions/context.js';
 import { applySlippage, priceImpactPercent } from '../src/actions/sell.js';
 import { maxSendable } from '../src/actions/transfer.js';
@@ -270,4 +271,35 @@ test('Uniswap v4: sell input encodes swap, settle and take for the right currenc
 test('an RPC block (HTTP 403/429) gets a plain-English message', () => {
   const err = new HttpRequestError({ url: 'https://rpc.example', status: 403, body: {}, details: 'Just a moment...' });
   assert.match(describeError(err), /limiting requests/);
+});
+
+test('tiny amounts keep 3 significant digits', () => {
+  assert.equal(formatAmount(4_999_124_770_751n, 18), '0.00000499');
+  assert.equal(formatAmount(parseEther('0.000681'), 18), '0.000681');
+});
+
+test('RPC failover: switches to the backup after a block and stays there; real errors pass through', async () => {
+  let primaryCalls = 0;
+  let backupCalls = 0;
+  let mode: 'blocked' | 'revert' = 'revert';
+  const primary = custom({
+    async request() {
+      primaryCalls++;
+      if (mode === 'blocked') throw new HttpRequestError({ url: 'https://rpc', status: 403, details: 'Just a moment...' });
+      throw new RpcRequestError({ body: {}, error: { code: 3, message: 'execution reverted' }, url: 'https://rpc' });
+    },
+  });
+  const backup = custom({ async request() { backupCalls++; return '0x1237'; } });
+  const transport = failover(primary, backup)({ retryCount: 0 });
+
+  // A real error (a revert) must surface, not trigger the backup.
+  await assert.rejects(transport.request({ method: 'eth_call' }));
+  assert.equal(backupCalls, 0);
+
+  mode = 'blocked';
+  assert.equal(await transport.request({ method: 'eth_chainId' }), '0x1237');
+  const afterBlock = primaryCalls;
+  assert.equal(await transport.request({ method: 'eth_chainId' }), '0x1237');
+  assert.equal(primaryCalls, afterBlock, 'the blocked RPC is not retried straight away');
+  assert.equal(backupCalls, 2);
 });

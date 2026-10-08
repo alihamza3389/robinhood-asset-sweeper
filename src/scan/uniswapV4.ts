@@ -69,7 +69,8 @@ export async function findV4Pools(
   const out = new Map<string, V4Found>();
   const found: { token: { address: Address; decimals: number }; key: V4PoolKey; id: Hex }[] = [];
 
-  for (const token of tokens) {
+  // A few lookups at a time: much faster for wallets full of airdrops, gentle on the API.
+  const lookup = async (token: { address: Address; decimals: number }) => {
     const query = new URLSearchParams({
       module: 'logs',
       action: 'getLogs',
@@ -90,7 +91,13 @@ export async function findV4Pools(
       const parsed = parseInitializeLog(log);
       if (parsed && parsed.key.currency1.toLowerCase() === token.address.toLowerCase()) found.push({ token, ...parsed });
     }
-  }
+  };
+  const queue = [...tokens];
+  await Promise.all(
+    Array.from({ length: Math.min(4, queue.length) }, async () => {
+      for (let t = queue.shift(); t; t = queue.shift()) await lookup(t);
+    })
+  );
   if (found.length === 0) return out;
 
   const state = await publicClient.multicall({
