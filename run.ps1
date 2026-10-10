@@ -33,7 +33,15 @@ if (-not (Test-Path node_modules)) {
     Write-Host ""
 }
 
+# Exit code 75 = "update installed": reinstall packages and start the updated launcher.
+$env:SWEEPER_LAUNCHER = "1"
 node --import tsx src/index.ts @args
+if ($LASTEXITCODE -eq 75) {
+    Write-Host "Installing the update..." -ForegroundColor Cyan
+    npm install --no-audit --no-fund
+    & $PSCommandPath @args
+    exit $LASTEXITCODE
+}
 
 Write-Host ""
 Read-Host "Press Enter to close"

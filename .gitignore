@@ -11,6 +11,7 @@ dist/
 !.env.example
 custom-tokens.json
 wallet.keystore*.json
+.update-backup/
 .env.bak
 
 # Logs

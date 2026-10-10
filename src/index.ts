@@ -4,6 +4,7 @@ import { confirm, input } from '@inquirer/prompts';
 import { HELP, loadConfig, parseCli } from './config.js';
 import { askBlockscoutKey, envExists, runSetupWizard } from './setup.js';
 import { runReset } from './reset.js';
+import { checkForUpdate, RESTART_EXIT_CODE } from './update.js';
 import { createClients } from './chain.js';
 import { CONTRACTS, DEAD_ADDRESS, FALLBACK_STOCK_TOKENS } from './constants.js';
 import { Asset, ActionResult, OperationMode, TokenAsset } from './types.js';
@@ -86,6 +87,10 @@ async function main() {
   // Start on a clean screen (also hides npm's own startup lines).
   if (process.stdout.isTTY) console.clear();
   banner(cli.dryRun);
+  // Before anything else (and before the key is unlocked): offer a newer version if there is one.
+  if (!cli.reset && (await checkForUpdate())) {
+    process.exit(process.env.SWEEPER_LAUNCHER === '1' ? RESTART_EXIT_CODE : 0);
+  }
   if (cli.reset) {
     await runReset();
     return;

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { custom, decodeAbiParameters, getAddress, HttpRequestError, keccak256, parseEther, RpcRequestError, zeroAddress } from 'viem';
 import { failover } from '../src/chain.js';
+import { isNewer, isUserFile, summarizeNotes } from '../src/update.js';
 import { describeError } from '../src/actions/context.js';
 import { applySlippage, priceImpactPercent } from '../src/actions/sell.js';
 import { maxSendable } from '../src/actions/transfer.js';
@@ -290,7 +291,7 @@ test('RPC failover: switches to the backup after a block and stays there; real e
     },
   });
   const backup = custom({ async request() { backupCalls++; return '0x1237'; } });
-  const transport = failover(primary, backup)({ retryCount: 0 });
+  const transport = failover([{ transport: primary, canSend: true }, { transport: backup, canSend: false }])({ retryCount: 0 });
 
   // A real error (a revert) must surface, not trigger the backup.
   await assert.rejects(transport.request({ method: 'eth_call' }));
@@ -316,7 +317,7 @@ test('RPC failover: transactions always go through the primary, retried patientl
     },
   });
   const backup = custom({ async request() { backupCalls++; return '0x1237'; } });
-  const transport = failover(primary, backup, [1, 1, 1])({ retryCount: 0 });
+  const transport = failover([{ transport: primary, canSend: true }, { transport: backup, canSend: false }], [1, 1, 1])({ retryCount: 0 });
 
   await transport.request({ method: 'eth_chainId' }); // primary blocked -> reads move to the backup
   assert.equal(backupCalls, 1);
@@ -325,6 +326,52 @@ test('RPC failover: transactions always go through the primary, retried patientl
 
   // the network already has it (an earlier attempt got through): treated as sent
   const known = custom({ async request() { throw new RpcRequestError({ body: {}, error: { code: -32000, message: 'already known' }, url: 'x' }); } });
-  const t2 = failover(known, backup, [])({ retryCount: 0 });
+  const t2 = failover([{ transport: known, canSend: true }, { transport: backup, canSend: false }], [])({ retryCount: 0 });
   assert.equal(await t2.request({ method: 'eth_sendRawTransaction', params: ['0x02'] }), keccak256('0x02'));
+});
+
+test('updater: version comparison, release-note summary, protected user files', () => {
+  assert.equal(isNewer('v3.2.0', '3.1.2'), true);
+  assert.equal(isNewer('v3.1.10', '3.1.9'), true);
+  assert.equal(isNewer('v3.1.1', '3.1.1'), false);
+  assert.equal(isNewer('v3.0.9', '3.1.0'), false);
+  assert.equal(isNewer('nonsense', '3.1.0'), false);
+
+  const notes = summarizeNotes('## Fixes\n- 🔌 **No more failed sales** when [busy](https://x)\n- second\n\nplain line\n* third');
+  assert.deepEqual(notes, ['No more failed sales when busy', 'second', 'third']);
+  assert.deepEqual(summarizeNotes('- First sentence here. Second one is dropped.'), ['First sentence here.']);
+
+  for (const f of ['.env', '.env.bak', 'wallet.keystore.json', 'wallet.keystore.123.bak.json', 'custom-tokens.json', 'node_modules/x/y.js', '.git/HEAD'])
+    assert.equal(isUserFile(f), true, f);
+  for (const f of ['src/index.ts', 'package.json', 'run.bat', 'README.md', '.env.example'])
+    assert.equal(isUserFile(f), false, f);
+});
+
+test('RPC failover chain: official -> publicnode (reads + sends) -> Blockscout (reads only)', async () => {
+  const calls = { official: 0, publicnode: 0, blockscout: 0 };
+  let publicnodeUp = true;
+  const blocked = (name: keyof typeof calls) => custom({ async request() { calls[name]++; throw new HttpRequestError({ url: name, status: 403 }); } });
+  const official = blocked('official');
+  const publicnode = custom({
+    async request({ method }) {
+      calls.publicnode++;
+      if (!publicnodeUp) throw new HttpRequestError({ url: 'pn', status: 429 });
+      return method === 'eth_sendRawTransaction' ? '0xsent' : '0xpn';
+    },
+  });
+  const blockscout = custom({ async request() { calls.blockscout++; return '0xbs'; } });
+  const t = failover(
+    [{ transport: official, canSend: true }, { transport: publicnode, canSend: true }, { transport: blockscout, canSend: false }],
+    [1, 1]
+  )({ retryCount: 0 });
+
+  assert.equal(await t.request({ method: 'eth_chainId' }), '0xpn'); // official blocked -> publicnode
+  assert.equal(await t.request({ method: 'eth_chainId' }), '0xpn');
+  assert.equal(calls.official, 1, 'a blocked endpoint rests instead of being asked again');
+  assert.equal(await t.request({ method: 'eth_sendRawTransaction', params: ['0x02'] }), '0xsent'); // sends via publicnode
+
+  publicnodeUp = false;
+  assert.equal(await t.request({ method: 'eth_blockNumber' }), '0xbs'); // both down -> Blockscout for reads
+  await assert.rejects(t.request({ method: 'eth_sendRawTransaction', params: ['0x02'] })); // never via Blockscout
+  assert.equal(calls.blockscout, 1);
 });

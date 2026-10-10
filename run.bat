@@ -19,8 +19,21 @@ if errorlevel 1 goto :install_failed
 echo.
 
 :launch
-node --import tsx src/index.ts %*
-goto :end
+REM Kept in one block: cmd reads it fully before running it, so an update that replaces this file
+REM can't make the running copy read half-old, half-new lines. Exit code 75 = "update installed".
+(
+  set SWEEPER_LAUNCHER=1
+  node --import tsx src/index.ts %*
+  if errorlevel 75 if not errorlevel 76 (
+    echo Installing the update...
+    call npm install --no-audit --no-fund
+    call "%~f0" %*
+    exit /b
+  )
+  echo.
+  pause
+  exit /b
+)
 
 :no_node
 echo Node.js is not installed.

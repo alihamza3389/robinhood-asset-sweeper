@@ -186,7 +186,7 @@ Run the setup again (`run.bat --setup`, `.\run.ps1 --setup` or `./run.sh --setup
 Every transaction needs a tiny bit of ETH on Robinhood Chain to pay the network fee. A dollar or two covers many transactions.
 
 **"The Robinhood Chain RPC is temporarily limiting requests"**
-The public network connection sometimes limits busy connections. The tool now reads through Blockscout's connection automatically when that happens (using the key you already set up), and keeps the public connection free for sending your transactions, retrying patiently for about a minute if it is busy. So you should rarely see this. If you still do, wait a few minutes and start the tool again, or set `RPC_URL` in your `.env` file to a private RPC provider.
+The public network connection sometimes limits busy connections. The tool now switches automatically to a second public connection (PublicNode), and then to Blockscout's connection (using the key you already set up), so you should rarely see this. If you still do, wait a few minutes and start the tool again, or set `RPC_URL` in your `.env` file to a private RPC provider.
 
 **A token says "not sellable here"**
 There's nowhere to sell it on Robinhood Chain right now (no market with enough trading). You can still send it or burn it.
@@ -201,7 +201,9 @@ Some scam tokens show a balance that can't actually be moved. The tool spots thi
 The network was slow. Open the transaction link to see if it went through **before** running the tool again.
 
 **How do I update to a new version?**
-If you used git: run `git pull` in the folder. If you downloaded a ZIP: download the new one from the [Releases page](https://github.com/alihamza3389/robinhood-asset-sweeper/releases/latest) and extract it. Your saved key and settings are two files in the old folder: **`wallet.keystore.json`** and **`.env`** (plus `custom-tokens.json` if you added tokens by hand). Copy them into the new folder and everything carries over, password included. Or skip that and just run the setup wizard again.
+The tool checks for updates every time it starts. When a new version is out, it shows what changed and asks **"Update now?"**. Press Enter and it updates itself and restarts. Your saved key, settings and tokens are kept, and nothing ever updates without asking. (To turn the check off, set `SWEEPER_NO_UPDATE=1`.)
+
+On versions before 3.2, or to update by hand: if you used git, run `git pull` in the folder. If you downloaded a ZIP, download the new one from the [Releases page](https://github.com/alihamza3389/robinhood-asset-sweeper/releases/latest) and extract it, then copy **`wallet.keystore.json`** and **`.env`** (plus `custom-tokens.json` if you added tokens by hand) from the old folder into the new one. Or skip that and just run the setup wizard again.
 > On a Mac, files starting with a dot are hidden in Finder: press **Cmd + Shift + .** to show them.
 
 **I want to start over**
@@ -228,7 +230,8 @@ This tool is free. If it saved you time or money, tips are appreciated:
 - **Finding tokens:** the Blockscout Pro API lists the wallet's tokens. The official Robinhood stock list and the Bucket price-feed tokens are also checked directly on-chain, so an indexing gap can't hide them. Robinhood stock tokens are type `ERC-8056` in Blockscout, so the scan accepts every fungible type, not just `ERC-20`.
 - **Balances and routes:** one multicall reads every balance and checks the router registries (`StockRouterUsdg.isRegistered`, `Treasury.isRegistered`). Tokens those routers don't support are checked for Uniswap v3 pools with real liquidity (direct to WETH, or via USDG), then for Uniswap v4 token/ETH pools (found through the PoolManager's `Initialize` events on Blockscout; this covers launchpad tokens such as Pons launches). At sale time every path or pool is quoted and the one returning the most ETH is used. v4 sales go through the Universal Router with exact-amount Permit2 approvals that expire after 10 minutes.
 - **Selling:** approve the exact amount, simulate for a live quote, then send with `minAmountOut` set to the quote minus the slippage limit.
-- **Network connection:** the public Robinhood Chain RPC, with an automatic switch to Blockscout's JSON-RPC (`/json-rpc`, same key) for reads for a few minutes whenever the public RPC blocks or rate-limits. Transactions are always sent through the public RPC (Blockscout checks but does not broadcast them), with patient retries. Nonces are tracked locally so back-to-back transactions never collide.
+- **Network connection:** three connections tried in order: the official Robinhood Chain RPC, then [PublicNode](https://robinhood-rpc.publicnode.com) (reads and transactions), then Blockscout's JSON-RPC with your key (reads only; it checks transactions but does not broadcast them). One that blocks or rate-limits is skipped for a few minutes; transactions retry patiently for about a minute if every connection that can send is busy. Nonces are tracked locally so back-to-back transactions never collide.
+- **Updates:** on start the tool asks GitHub for the latest release. If it is newer it shows the highlights and asks before doing anything; it then downloads the release, checks it is this tool at that version, backs up and replaces the program files (never `.env`, keys or `custom-tokens.json`), and the launcher reinstalls packages and restarts. git clones update with a fast-forward `git pull`.
 - **Prices:** the Bucket indexer feed, Blockscout, and the BUCKET/ETH Uniswap v4 pool. Prices are for display only; sales use live on-chain quotes.
 - **Saved key:** `wallet.keystore.json`, Web3 Secret Storage v3 (scrypt + AES-128-CTR). Compatible with MetaMask, geth and ethers (checked in the tests).
 

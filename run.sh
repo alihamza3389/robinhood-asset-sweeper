@@ -23,4 +23,17 @@ if [ ! -d node_modules ]; then
     echo
 fi
 
-node --import tsx src/index.ts "$@"
+# Kept in one block: bash reads it fully before running it, so an update that replaces this
+# file can't make the running copy read half-old, half-new lines. Exit code 75 = "update installed".
+{
+    export SWEEPER_LAUNCHER=1
+    code=0
+    node --import tsx src/index.ts "$@" || code=$?
+    if [ "$code" -eq 75 ]; then
+        echo "Installing the update..."
+        npm install --no-audit --no-fund && exec "$0" "$@"
+        echo "Installing packages failed. Check your internet connection and run ./run.sh again."
+        exit 1
+    fi
+    exit "$code"
+}

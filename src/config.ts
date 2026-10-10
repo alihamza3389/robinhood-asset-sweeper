@@ -22,6 +22,7 @@ Options:
   -h, --help           Show this help
 
 Settings are read from .env, which the setup wizard creates on first run.
+On start the tool checks GitHub for a newer version and asks before updating (set SWEEPER_NO_UPDATE=1 to skip).
 `;
 
 export function parsePercent(flag: string, raw: string | undefined, fallback: number, max = 50): number {

@@ -95,6 +95,9 @@ export const FALLBACK_STOCK_TOKENS: readonly string[] = [
 
 export const DEAD_ADDRESS: Address = '0x000000000000000000000000000000000000dEaD';
 
+/** Second public Robinhood Chain RPC (Allnodes PublicNode). Tested: full method support, broadcasts transactions. */
+export const PUBLICNODE_RPC = 'https://robinhood-rpc.publicnode.com';
+
 export const API = {
   blockscoutPro: (chainId: number) => `https://api.blockscout.com/${chainId}/api/v2`,
   /** Ethereum JSON-RPC served by Blockscout (backup when the public RPC limits requests). */
