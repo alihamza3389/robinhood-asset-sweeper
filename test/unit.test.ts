@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { custom, decodeAbiParameters, getAddress, HttpRequestError, parseEther, RpcRequestError, zeroAddress } from 'viem';
+import { custom, decodeAbiParameters, getAddress, HttpRequestError, keccak256, parseEther, RpcRequestError, zeroAddress } from 'viem';
 import { failover } from '../src/chain.js';
 import { describeError } from '../src/actions/context.js';
 import { applySlippage, priceImpactPercent } from '../src/actions/sell.js';
@@ -302,4 +302,29 @@ test('RPC failover: switches to the backup after a block and stays there; real e
   assert.equal(await transport.request({ method: 'eth_chainId' }), '0x1237');
   assert.equal(primaryCalls, afterBlock, 'the blocked RPC is not retried straight away');
   assert.equal(backupCalls, 2);
+});
+
+test('RPC failover: transactions always go through the primary, retried patiently, never the backup', async () => {
+  let primaryCalls = 0;
+  let backupCalls = 0;
+  const primary = custom({
+    async request({ method }) {
+      primaryCalls++;
+      if (method === 'eth_sendRawTransaction' && primaryCalls < 3) throw new HttpRequestError({ url: 'https://rpc', status: 429 });
+      if (method === 'eth_sendRawTransaction') return '0xabc';
+      throw new HttpRequestError({ url: 'https://rpc', status: 403 });
+    },
+  });
+  const backup = custom({ async request() { backupCalls++; return '0x1237'; } });
+  const transport = failover(primary, backup, [1, 1, 1])({ retryCount: 0 });
+
+  await transport.request({ method: 'eth_chainId' }); // primary blocked -> reads move to the backup
+  assert.equal(backupCalls, 1);
+  assert.equal(await transport.request({ method: 'eth_sendRawTransaction', params: ['0x02'] }), '0xabc');
+  assert.equal(backupCalls, 1, 'a transaction is never handed to the backup');
+
+  // the network already has it (an earlier attempt got through): treated as sent
+  const known = custom({ async request() { throw new RpcRequestError({ body: {}, error: { code: -32000, message: 'already known' }, url: 'x' }); } });
+  const t2 = failover(known, backup, [])({ retryCount: 0 });
+  assert.equal(await t2.request({ method: 'eth_sendRawTransaction', params: ['0x02'] }), keccak256('0x02'));
 });

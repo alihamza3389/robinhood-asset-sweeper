@@ -11,6 +11,8 @@ import {
   RpcRequestError,
   TimeoutError,
   Transport,
+  Hex,
+  keccak256,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { Config } from './types.js';
@@ -57,15 +59,38 @@ export function isRpcUnavailable(err: unknown): boolean {
   return err instanceof BaseError && err.walk((e) => e instanceof TimeoutError) instanceof TimeoutError;
 }
 
-/** Use `primary`; once it refuses us, use `backup` for a few minutes before trying `primary` again. */
-export function failover(primary: Transport, backup: Transport): Transport {
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Waits between send attempts while the public RPC is refusing us (about a minute in total). */
+export const SEND_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000];
+
+/**
+ * Use `primary`; once it refuses us, use `backup` for a few minutes before trying `primary` again.
+ * Exception: transactions are only ever sent through `primary`. Blockscout's JSON-RPC (the backup)
+ * checks transactions but refuses to broadcast them ("publishing transactions not supported").
+ * While reads use the backup the public RPC sees very few requests, so a patient retry usually works.
+ */
+export function failover(primary: Transport, backup: Transport, sendDelaysMs: number[] = SEND_RETRY_DELAYS_MS): Transport {
   let backupUntil = 0;
   return (opts) => {
     const a = primary({ ...opts, retryCount: 0 });
     const b = backup(opts);
+    const send = async (args: { method: string; params?: unknown }) => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await a.request(args);
+        } catch (err) {
+          const raw = (Array.isArray(args.params) ? args.params[0] : undefined) as Hex | undefined;
+          // A retry of a transaction the network already has: it was sent, so return its hash.
+          if (raw && /already known|known transaction/i.test(String((err as Error).message))) return keccak256(raw);
+          if (!isRpcUnavailable(err) || attempt >= sendDelaysMs.length) throw err;
+          await sleep(sendDelaysMs[attempt]);
+        }
+      }
+    };
     return custom(
       {
         async request(args: { method: string; params?: unknown }) {
+          if (args.method === 'eth_sendRawTransaction') return send(args);
           if (Date.now() >= backupUntil) {
             try {
               return await a.request(args);
