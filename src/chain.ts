@@ -17,7 +17,7 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import { Config } from './types.js';
 import { mainnet } from 'viem/chains';
-import { API, CONTRACTS, DEFAULTS, ETHEREUM_RPC, FLASHBOTS_RPC, PUBLICNODE_RPC } from './constants.js';
+import { API, CONTRACTS, DEFAULTS, ETHEREUM_RPC, ETHEREUM_RPC_BACKUP, FLASHBOTS_RPC, PUBLICNODE_RPC } from './constants.js';
 
 /**
  * Blockscout's JSON-RPC endpoint, used as a backup when the public RPC blocks or rate-limits.
@@ -164,15 +164,14 @@ export function createClients(config: Config) {
 
 /**
  * Ethereum mainnet with the same key: checks a bridge recipient, shows its balance, and sends deposits
- * for Ethereum -> Robinhood Chain bridges. PublicNode and Flashbots Protect can send; Blockscout only reads.
+ * for Ethereum -> Robinhood Chain bridges. PublicNode, then dRPC; Flashbots Protect only sends.
  */
-export function createEthereumClients(config: Pick<Config, 'privateKey' | 'blockscoutApiKey'>) {
-  const endpoints: Endpoint[] = [
+export function createEthereumClients(config: Pick<Config, 'privateKey'>) {
+  const transport = failover([
     { transport: http(ETHEREUM_RPC, { retryCount: 0, timeout: 20_000 }), canSend: true },
+    { transport: http(ETHEREUM_RPC_BACKUP, { retryCount: 0, timeout: 20_000 }), canSend: true },
     { transport: http(FLASHBOTS_RPC, { retryCount: 0, timeout: 20_000 }), canSend: true, canRead: false },
-  ];
-  if (config.blockscoutApiKey) endpoints.push({ transport: blockscoutRpcTransport(mainnet.id, config.blockscoutApiKey), canSend: false });
-  const transport = failover(endpoints);
+  ]);
   const account = privateKeyToAccount(config.privateKey, { nonceManager });
   return {
     publicClient: createPublicClient({ chain: mainnet, transport }),

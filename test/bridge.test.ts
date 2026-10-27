@@ -137,6 +137,8 @@ test('bridge: fee reserve, staleness and display rounding', () => {
   assert.equal(bridgeFee(50_000_000n).maxFee, 100_000_000n);
   // The tip is paid on top of the base-fee allowance.
   assert.equal(bridgeFee(100_000_000n, 50_000_000n).maxFee, 250_000_000n);
+  // Ethereum gets 3x headroom on the base fee (it can rise ~12.5% a block before inclusion).
+  assert.equal(bridgeFee(100_000_000n, 50_000_000n, 3n).maxFee, 350_000_000n);
   const q = { quotedAt: NOW, expiresAt: NOW + 300_000 } as BridgeQuote;
   assert.equal(isStale(q, NOW + 60_000), false);
   assert.equal(isStale(q, NOW + 91_000), true);

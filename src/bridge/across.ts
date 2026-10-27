@@ -266,7 +266,7 @@ export async function signedMismatch(signed: TransactionSerialized, p: PlannedTx
 }
 
 export type DepositStatus =
-  | { status: 'filled'; fillHash: Hex; originChainId?: number; destinationChainId?: number }
+  | { status: 'filled'; fillHash: Hex }
   | { status: 'refunded'; refundHash?: Hex }
   | { status: 'pending'; detail: string }
   /** Across has no deposit with this hash (yet: a brand-new one takes a few seconds to appear). */
@@ -277,16 +277,8 @@ export async function fetchDepositStatus(depositHash: Hex): Promise<DepositStatu
   const res = await fetch(`${ACROSS.API}/deposit/status?depositTxnRef=${depositHash}`, { signal: AbortSignal.timeout(15_000) });
   if (res.status === 404) return { status: 'unknown' };
   if (!res.ok) throw new Error(`Across answered ${res.status}`);
-  const s = (await res.json()) as {
-    status: string;
-    fillTxnRef?: Hex;
-    depositRefundTxnRef?: Hex;
-    originChainId?: number;
-    destinationChainId?: number;
-  };
-  if (s.status === 'filled' && s.fillTxnRef) {
-    return { status: 'filled', fillHash: s.fillTxnRef, originChainId: s.originChainId, destinationChainId: s.destinationChainId };
-  }
+  const s = (await res.json()) as { status: string; fillTxnRef?: Hex; depositRefundTxnRef?: Hex };
+  if (s.status === 'filled' && s.fillTxnRef) return { status: 'filled', fillHash: s.fillTxnRef };
   if (s.status === 'expired' || s.status === 'refunded') return { status: 'refunded', refundHash: s.depositRefundTxnRef };
   return { status: 'pending', detail: s.status };
 }

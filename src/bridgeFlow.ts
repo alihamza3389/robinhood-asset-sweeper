@@ -1,6 +1,6 @@
 import ora from 'ora';
-import { Address, Hex, PublicClient as ViemPublicClient } from 'viem';
-import { ACROSS, BRIDGE_ROUTES, BridgeRoute } from './constants.js';
+import { Address, Hex, PublicClient as ViemPublicClient, createPublicClient, http } from 'viem';
+import { ACROSS, ACROSS_CHAINS, AcrossChain, BRIDGE_ROUTES, BridgeRoute, ETHEREUM_RPC, PUBLICNODE_RPC } from './constants.js';
 import { ActionResult, Config, NativeAsset } from './types.js';
 import {
   BridgeAmount,
@@ -174,7 +174,7 @@ export async function runBridgeMode(opts: { config: Config; robinhood: BridgeCon
       available <= 0n
         ? `There is no ETH to bridge on ${route.from.name} after keeping back the network fee.`
         : `Your ETH on ${route.from.name} is below the Across minimum for a bridge.`;
-    const hint = fromEthereum ? [`Send some ETH to ${owner} on Ethereum first.`] : [];
+    const hint = fromEthereum ? wrap(`Send some ETH to ${owner} on Ethereum first.`) : [];
     console.log('\n' + box([...wrap(why), ...hint], { title: 'Nothing to do', color: c.warn }));
     return;
   }
@@ -193,14 +193,29 @@ export async function runBridgeMode(opts: { config: Config; robinhood: BridgeCon
   printSummary([result], { ...config, explorerUrl: route.from.explorer }, ethUsd);
 }
 
-const chainById = (id?: number) => [ACROSS.ROBINHOOD, ACROSS.ETHEREUM].find((ch) => ch.id === id);
+/** Public RPCs used only to find which chain a deposit hash is on (no key needed). */
+const LOOKUP_RPC: Record<number, string> = { [ACROSS.ROBINHOOD.id]: PUBLICNODE_RPC, [ACROSS.ETHEREUM.id]: ETHEREUM_RPC };
+
+/** The chain a transaction hash was sent on, or undefined if neither chain knows it. */
+async function findDepositChain(hash: Hex): Promise<AcrossChain | undefined> {
+  const found = await Promise.all(
+    ACROSS_CHAINS.map((ch) =>
+      createPublicClient({ transport: http(LOOKUP_RPC[ch.id], { timeout: 15_000 }) })
+        .getTransaction({ hash })
+        .then(() => ch, () => undefined)
+    )
+  );
+  return found.find((ch) => ch !== undefined);
+}
 
 /** `--track <hash>`: check on a deposit that was sent earlier (either direction). Needs no key. */
 export async function runTrack(hash: Hex) {
-  console.log(`\n${c.dim('Deposit')}  ${hash}`);
   const spinner = ora({ text: 'Asking Across where this deposit is…', discardStdin: false }).start();
-  const result = await trackDeposit(hash, (t) => (spinner.text = `Asking Across where this deposit is · ${c.dim(t)}`), 60_000);
+  const [origin, result] = await Promise.all([
+    findDepositChain(hash),
+    trackDeposit(hash, (t) => (spinner.text = `Asking Across where this deposit is · ${c.dim(t)}`), 60_000),
+  ]);
   spinner.stop();
-  const filled = result.status === 'filled' ? result : undefined;
-  printBridgeOutcome({ result, depositHash: hash, origin: chainById(filled?.originChainId), dest: chainById(filled?.destinationChainId), showTime: false });
+  const dest = origin && ACROSS_CHAINS.find((ch) => ch.id !== origin.id);
+  printBridgeOutcome({ result, depositHash: hash, origin, dest, showTime: false });
 }

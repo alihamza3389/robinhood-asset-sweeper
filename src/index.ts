@@ -260,9 +260,9 @@ async function main() {
             'Send a little ETH (a dollar or two is plenty) to:',
             c.addr.bold(sender),
             'then start the tool again.',
-            '',
-            c.dim('Have ETH on Ethereum? Choose "Bridge ETH", then'),
-            c.dim(`"Ethereum ${sym.arrow} Robinhood Chain" to bring some over.`),
+            ...(canBridge
+              ? ['', c.dim('Have ETH on Ethereum? Choose "Bridge ETH", then'), c.dim(`"Ethereum ${sym.arrow} Robinhood Chain" to bring some over.`)]
+              : []),
           ],
           { title: `${emoji('⛽')}No ETH for fees`, color: c.danger }
         )

@@ -59,10 +59,13 @@ export interface BridgeQuote {
   expiresAt: number;
 }
 
-/** The fee settings and the ETH kept back for the bridge's network fee. Exported for tests. */
-export function bridgeFee(baseFeePerGas: bigint, priorityFee = 0n): { maxFee: bigint; priorityFee: bigint; reserve: bigint } {
-  const twice = 2n * baseFeePerGas;
-  const maxFee = (twice > MIN_MAX_FEE ? twice : MIN_MAX_FEE) + priorityFee;
+/**
+ * The fee settings and the ETH kept back for the bridge's network fee. The base fee is allowed to grow
+ * `headroom` times before the deposit would stall. Exported for tests.
+ */
+export function bridgeFee(baseFeePerGas: bigint, priorityFee = 0n, headroom = 2n): { maxFee: bigint; priorityFee: bigint; reserve: bigint } {
+  const allowed = headroom * baseFeePerGas;
+  const maxFee = (allowed > MIN_MAX_FEE ? allowed : MIN_MAX_FEE) + priorityFee;
   return { maxFee, priorityFee, reserve: ACROSS.MAX_GAS * maxFee };
 }
 
@@ -73,10 +76,13 @@ export async function priorityFeeFor(route: BridgeRoute, publicClient: Pick<Viem
   return suggested < MIN_ETHEREUM_TIP ? MIN_ETHEREUM_TIP : suggested > MAX_ETHEREUM_TIP ? MAX_ETHEREUM_TIP : suggested;
 }
 
-/** Fee settings for a deposit from `route.from` right now. */
+/**
+ * Fee settings for a deposit from `route.from` right now. Ethereum's base fee can rise about 12.5% a
+ * block, and up to 90 s pass between quote and inclusion, so it gets 3x headroom there.
+ */
 export async function currentBridgeFee(route: BridgeRoute, publicClient: ViemPublicClient) {
   const [block, tip] = await Promise.all([publicClient.getBlock(), priorityFeeFor(route, publicClient)]);
-  return bridgeFee(block.baseFeePerGas ?? 0n, tip);
+  return bridgeFee(block.baseFeePerGas ?? 0n, tip, route.from.id === ACROSS.ETHEREUM.id ? 3n : 2n);
 }
 
 /**
@@ -185,7 +191,7 @@ export async function sendBridge(ctx: BridgeContext, asset: NativeAsset, q: Brid
 }
 
 export type TrackResult =
-  | { status: 'filled'; fillHash: Hex; seconds: number; originChainId?: number; destinationChainId?: number }
+  | { status: 'filled'; fillHash: Hex; seconds: number }
   | { status: 'refunded'; refundHash?: Hex }
   | { status: 'timeout' }
   /** Across never saw a deposit with this hash in the whole time. */
@@ -205,7 +211,7 @@ export async function trackDeposit(
   while (Date.now() - start < timeoutMs) {
     try {
       const s = await status(hash);
-      if (s.status === 'filled') return { ...s, seconds: Math.round((Date.now() - start) / 1000) };
+      if (s.status === 'filled') return { status: 'filled', fillHash: s.fillHash, seconds: Math.round((Date.now() - start) / 1000) };
       if (s.status === 'refunded') return s;
       misses = 0;
       if (s.status === 'unknown') {

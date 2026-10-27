@@ -148,14 +148,19 @@ export interface BridgeRoute {
   to: AcrossChain;
 }
 
+/** Every chain the bridge knows, for looking one up by id. */
+export const ACROSS_CHAINS: readonly AcrossChain[] = [ACROSS_ROBINHOOD, ACROSS_ETHEREUM];
+
 export const BRIDGE_ROUTES = {
   toEthereum: { from: ACROSS_ROBINHOOD, to: ACROSS_ETHEREUM },
   toRobinhood: { from: ACROSS_ETHEREUM, to: ACROSS_ROBINHOOD },
 } as const satisfies Record<string, BridgeRoute>;
 
-/** Ethereum mainnet RPCs: PublicNode for reads and sends, Flashbots Protect as a second sender
- * (it also keeps a pending deposit away from front-running bots). */
+/** Ethereum mainnet RPCs: PublicNode and dRPC for reads and sends, Flashbots Protect as a send-only
+ * backup (it also keeps a pending deposit away from front-running bots). Blockscout is not used here:
+ * its balances and nonces can lag, and they size and number a real deposit. */
 export const ETHEREUM_RPC = 'https://ethereum-rpc.publicnode.com';
+export const ETHEREUM_RPC_BACKUP = 'https://eth.drpc.org';
 export const FLASHBOTS_RPC = 'https://rpc.flashbots.net';
 
 export const API = {
