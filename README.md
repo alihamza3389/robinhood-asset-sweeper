@@ -10,8 +10,8 @@ It's made for people who are **not** developers. If you can copy and paste, you 
 ❯ 📤 Send to another wallet
   💱 Sell tokens for ETH
   🧹 Sell everything, then send the ETH
-  🌉 Bridge ETH to Ethereum
-  🚀 Sell everything, then bridge the ETH
+  🌉 Bridge ETH from Robinhood Chain to Ethereum
+  🚀 Sell everything, then bridge the ETH to Ethereum
   🔥 Get rid of spam tokens
   👋 Exit
 ```
@@ -25,8 +25,8 @@ It's made for people who are **not** developers. If you can copy and paste, you 
 | 📤 **Send to another wallet** | Moves tokens and/or ETH to another address, like your main wallet. |
 | 💱 **Sell tokens for ETH** | Sells your tokens (BUCKET, tokenized stocks like AAPL or NVDA, reward tokens, launchpad tokens like ROB, and more) for ETH. The ETH stays in your wallet. |
 | 🧹 **Sell everything, then send the ETH** | Sells your tokens, then sends all the ETH to another address in one go. |
-| 🌉 **Bridge ETH to Ethereum** | Moves ETH from Robinhood Chain to Ethereum through [Across](https://across.to), to your own wallet or an exchange. Choose an amount in ETH, in US dollars, or everything. |
-| 🚀 **Sell everything, then bridge the ETH** | Sells your tokens, then bridges all the ETH to Ethereum in one go. |
+| 🌉 **Bridge ETH from Robinhood Chain to Ethereum** | Turns your ETH on Robinhood Chain into ETH on Ethereum through [Across](https://across.to), to your own wallet or an exchange. Choose an amount in ETH, in US dollars, or everything. |
+| 🚀 **Sell everything, then bridge the ETH to Ethereum** | Sells your tokens, then moves all the ETH to ETH on Ethereum in one go. |
 | 🔥 **Get rid of spam tokens** | Sends junk or scam tokens to a burn address so they stop cluttering your wallet. |
 
 ---

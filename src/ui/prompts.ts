@@ -31,14 +31,14 @@ export async function promptMode(bridge: boolean): Promise<OperationMode | 'QUIT
       ...(bridge
         ? [
             {
-              name: `${emoji('🌉')}Bridge ETH to Ethereum`,
+              name: `${emoji('🌉')}Bridge ETH from Robinhood Chain to Ethereum`,
               value: 'BRIDGE' as const,
-              description: 'Move ETH from Robinhood Chain to Ethereum (or an exchange) through Across.',
+              description: 'Turn your ETH on Robinhood Chain into ETH on Ethereum (your wallet or an exchange), through Across.',
             },
             {
-              name: `${emoji('🚀')}Sell everything, then bridge the ETH`,
+              name: `${emoji('🚀')}Sell everything, then bridge the ETH to Ethereum`,
               value: 'SELL_AND_BRIDGE' as const,
-              description: 'Swap tokens into ETH, then bridge all of it to Ethereum in one go.',
+              description: 'Swap tokens into ETH, then move all of it to ETH on Ethereum in one go.',
             },
           ]
         : []),

@@ -26,7 +26,8 @@ export function printBridgeQuote(opts: { q: BridgeQuote; amountArg: BridgeAmount
   const { q, amountArg, from, ethUsd } = opts;
   const own = q.recipient.toLowerCase() === from.toLowerCase();
   const lines: string[] = [
-    `${c.dim('Action')}    ${c.bold('Bridge ETH to Ethereum')} ${c.dim('(through Across)')}`,
+    `${c.dim('Action')}    ${c.bold('Bridge ETH from Robinhood Chain to Ethereum')}`,
+    `          ${c.dim('ETH in on Robinhood Chain, ETH out on Ethereum, through Across')}`,
     `${c.dim('From')}      ${c.addr(from)} ${c.dim('(Robinhood Chain)')}`,
     `${c.dim('To')}        ${c.warn.bold(q.recipient)} ${c.dim('(Ethereum)')}`,
     own ? `          ${c.dim('your own wallet, on Ethereum')}` : `          ${c.warn(`${sym.warn} not this wallet: double-check it`)}`,
