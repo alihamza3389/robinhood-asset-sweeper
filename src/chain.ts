@@ -17,7 +17,7 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import { Config } from './types.js';
 import { mainnet } from 'viem/chains';
-import { API, CONTRACTS, DEFAULTS, ETHEREUM_RPC, PUBLICNODE_RPC } from './constants.js';
+import { API, CONTRACTS, DEFAULTS, ETHEREUM_RPC, FLASHBOTS_RPC, PUBLICNODE_RPC } from './constants.js';
 
 /**
  * Blockscout's JSON-RPC endpoint, used as a backup when the public RPC blocks or rate-limits.
@@ -68,6 +68,8 @@ export interface Endpoint {
   transport: Transport;
   /** False for endpoints that check transactions but won't broadcast them (Blockscout). */
   canSend: boolean;
+  /** False for send-only endpoints that refuse ordinary reads such as eth_call (Flashbots Protect). */
+  canRead?: boolean;
 }
 
 /**
@@ -82,10 +84,11 @@ export function failover(endpoints: Endpoint[], sendDelaysMs: number[] = SEND_RE
     const markDown = (e: (typeof live)[number]) => (e.downUntil = Date.now() + FAILOVER_MS);
 
     const read = async (args: { method: string; params?: unknown }) => {
-      const usable = live.filter((e) => Date.now() >= e.downUntil);
+      const readers = live.filter((e) => e.canRead !== false);
+      const usable = readers.filter((e) => Date.now() >= e.downUntil);
       // If every endpoint is resting, try them all anyway rather than fail outright.
       let lastErr: unknown;
-      for (const e of usable.length ? usable : live) {
+      for (const e of usable.length ? usable : readers) {
         try {
           return await e.client.request(args);
         } catch (err) {
@@ -159,11 +162,22 @@ export function createClients(config: Config) {
   return { account, chain, publicClient, walletClient };
 }
 
-/** Ethereum mainnet, read only: checks a bridge recipient and shows its balance. PublicNode, then Blockscout. */
-export function createEthereumClient(blockscoutApiKey: string) {
-  const endpoints: Endpoint[] = [{ transport: http(ETHEREUM_RPC, { retryCount: 0, timeout: 20_000 }), canSend: false }];
-  if (blockscoutApiKey) endpoints.push({ transport: blockscoutRpcTransport(mainnet.id, blockscoutApiKey), canSend: false });
-  return createPublicClient({ chain: mainnet, transport: failover(endpoints) });
+/**
+ * Ethereum mainnet with the same key: checks a bridge recipient, shows its balance, and sends deposits
+ * for Ethereum -> Robinhood Chain bridges. PublicNode and Flashbots Protect can send; Blockscout only reads.
+ */
+export function createEthereumClients(config: Pick<Config, 'privateKey' | 'blockscoutApiKey'>) {
+  const endpoints: Endpoint[] = [
+    { transport: http(ETHEREUM_RPC, { retryCount: 0, timeout: 20_000 }), canSend: true },
+    { transport: http(FLASHBOTS_RPC, { retryCount: 0, timeout: 20_000 }), canSend: true, canRead: false },
+  ];
+  if (config.blockscoutApiKey) endpoints.push({ transport: blockscoutRpcTransport(mainnet.id, config.blockscoutApiKey), canSend: false });
+  const transport = failover(endpoints);
+  const account = privateKeyToAccount(config.privateKey, { nonceManager });
+  return {
+    publicClient: createPublicClient({ chain: mainnet, transport }),
+    walletClient: createWalletClient({ account, chain: mainnet, transport }),
+  };
 }
 
 export type Clients = ReturnType<typeof createClients>;

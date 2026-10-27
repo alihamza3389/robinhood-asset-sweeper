@@ -375,3 +375,23 @@ test('RPC failover chain: official -> publicnode (reads + sends) -> Blockscout (
   await assert.rejects(t.request({ method: 'eth_sendRawTransaction', params: ['0x02'] })); // never via Blockscout
   assert.equal(calls.blockscout, 1);
 });
+
+test('RPC failover: a send-only endpoint (Flashbots) is never used for reads', async () => {
+  const calls: string[] = [];
+  const endpoint = (name: string, fail: boolean) =>
+    custom({
+      async request({ method }: { method: string }) {
+        calls.push(`${name}:${method}`);
+        if (fail) throw new HttpRequestError({ url: name, status: 429 });
+        return method === 'eth_sendRawTransaction' ? keccak256('0x01') : '0x1';
+      },
+    });
+  const transport = failover([
+    { transport: endpoint('publicnode', true), canSend: true },
+    { transport: endpoint('flashbots', false), canSend: true, canRead: false },
+  ], [])({ retryCount: 0 } as never);
+  await assert.rejects(transport.request({ method: 'eth_call', params: [] }));
+  assert.ok(!calls.some((c) => c.startsWith('flashbots')), `reads went to flashbots: ${calls}`);
+  assert.equal(await transport.request({ method: 'eth_sendRawTransaction', params: ['0x01'] }), keccak256('0x01'));
+  assert.ok(calls.includes('flashbots:eth_sendRawTransaction'));
+});

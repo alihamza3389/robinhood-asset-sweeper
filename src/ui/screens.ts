@@ -11,9 +11,9 @@ const isToken = (a: Asset) => a.kind === 'erc20';
 export const MODE_TITLE: Record<OperationMode, string> = {
   TRANSFER: 'Send to another wallet',
   SELL: 'Sell tokens for ETH',
-  SELL_AND_SWEEP: 'Sell everything, then send the ETH',
-  BRIDGE: 'Bridge ETH from Robinhood Chain to Ethereum',
-  SELL_AND_BRIDGE: 'Sell everything, then bridge the ETH to Ethereum',
+  SELL_AND_SWEEP: 'Sell tokens, then send the ETH',
+  BRIDGE: 'Bridge ETH',
+  SELL_AND_BRIDGE: 'Sell tokens, then bridge the ETH to Ethereum',
   BURN: 'Get rid of spam tokens',
 };
 

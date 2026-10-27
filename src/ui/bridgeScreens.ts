@@ -1,4 +1,5 @@
 import { Address, formatEther } from 'viem';
+import { ACROSS, AcrossChain } from '../constants.js';
 import { BridgeAmount, BridgeQuote, TrackResult } from '../actions/bridge.js';
 import { Competitor } from '../bridge/across.js';
 import { formatEthShort, formatUsd } from './format.js';
@@ -10,7 +11,9 @@ const MAX_ROWS = 5;
 const usdOf = (wei: bigint, price?: number) => (price === undefined ? undefined : Number(formatEther(wei)) * price);
 const withUsd = (wei: bigint, price?: number, round: 'down' | 'up' = 'down') => {
   const usd = usdOf(wei, price);
-  return `${formatEthShort(wei, round)} ETH${usd === undefined ? '' : c.dim(` (${formatUsd(usd)})`)}`;
+  // A real but tiny amount must not read as nothing.
+  const eth = wei > 0n && wei < 10n ** 13n ? '<0.00001' : formatEthShort(wei, round);
+  return `${eth} ETH${usd === undefined ? '' : c.dim(` (${formatUsd(usd)})`)}`;
 };
 
 /** Rows for the comparison table: best first, at most MAX_ROWS, Across always included. Exported for tests. */
@@ -24,13 +27,14 @@ export function comparisonRows(acrossExpected: bigint, others: Competitor[]): Co
 
 export function printBridgeQuote(opts: { q: BridgeQuote; amountArg: BridgeAmount; from: Address; ethUsd?: number }) {
   const { q, amountArg, from, ethUsd } = opts;
+  const { from: origin, to: dest } = q.route;
   const own = q.recipient.toLowerCase() === from.toLowerCase();
   const lines: string[] = [
-    `${c.dim('Action')}    ${c.bold('Bridge ETH from Robinhood Chain to Ethereum')}`,
-    `          ${c.dim('ETH in on Robinhood Chain, ETH out on Ethereum, through Across')}`,
-    `${c.dim('From')}      ${c.addr(from)} ${c.dim('(Robinhood Chain)')}`,
-    `${c.dim('To')}        ${c.warn.bold(q.recipient)} ${c.dim('(Ethereum)')}`,
-    own ? `          ${c.dim('your own wallet, on Ethereum')}` : `          ${c.warn(`${sym.warn} not this wallet: double-check it`)}`,
+    `${c.dim('Action')}    ${c.bold(`Bridge ETH from ${origin.name} to ${dest.name}`)}`,
+    `          ${c.dim(`ETH in on ${origin.name}, ETH out on ${dest.name}, through Across`)}`,
+    `${c.dim('From')}      ${c.addr(from)} ${c.dim(`(${origin.name})`)}`,
+    `${c.dim('To')}        ${c.warn.bold(q.recipient)} ${c.dim(`(${dest.name})`)}`,
+    own ? `          ${c.dim(`your own wallet, on ${dest.name}`)}` : `          ${c.warn(`${sym.warn} not this wallet: double-check it`)}`,
     '',
     `${c.dim('You send')}  ${c.bold(withUsd(q.amount, ethUsd))}${amountArg.kind === 'max' ? c.dim('  (everything)') : ''}`,
   ];
@@ -39,7 +43,7 @@ export function printBridgeQuote(opts: { q: BridgeQuote; amountArg: BridgeAmount
   }
   lines.push(
     `${c.dim('Arrives')}   ${c.money.bold(`at least ${formatEthShort(q.guaranteed)} ETH`)}${ethUsd ? c.dim(` (${formatUsd(usdOf(q.guaranteed, ethUsd))})`) : ''} ${c.dim(`usually in about ${q.fillSeconds} s`)}`,
-    `${c.dim('Cost')}      ${withUsd(q.amount - q.guaranteed, ethUsd)} ${c.dim(`bridge fee, plus about ${formatUsd(q.gasUsd)} network fee`)}`
+    `${c.dim('Cost')}      ${withUsd(q.amount - q.guaranteed, ethUsd)} ${c.dim(`bridge fee + about ${formatUsd(q.gasUsd)} gas on ${origin.name}`)}`
   );
   if (q.limits) {
     lines.push(`${c.dim('Limits')}    ${c.dim(`min ${formatEthShort(q.limits.min, 'up')} ETH, fast fill up to ${formatEthShort(q.limits.maxInstant)} ETH`)}`);
@@ -80,7 +84,7 @@ export function printBridgeQuote(opts: { q: BridgeQuote; amountArg: BridgeAmount
     '',
     c.brand(`${sym.ok} Checked: Across's known contract, this amount, the address above`),
     c.brand(`${sym.ok} Tested against the live chain first`),
-    c.brand(`${sym.ok} If Across can't deliver, the ETH comes back here (as WETH)`)
+    c.brand(`${sym.ok} If Across can't deliver, it comes back to you on ${origin.name} (as WETH)`)
   );
   console.log('\n' + box(lines, { title: `${emoji('🌉')}Please check this carefully`, color: c.warn }));
 }
@@ -88,7 +92,9 @@ export function printBridgeQuote(opts: { q: BridgeQuote; amountArg: BridgeAmount
 export function printBridgeOutcome(opts: {
   result: TrackResult;
   depositHash: string;
-  explorerUrl: string;
+  /** Unknown for --track until Across says which chains the deposit was between. */
+  origin?: AcrossChain;
+  dest?: AcrossChain;
   recipient?: Address;
   before?: bigint;
   after?: bigint;
@@ -96,24 +102,26 @@ export function printBridgeOutcome(opts: {
   /** Off for --track, where the wait measured is the lookup, not the delivery. */
   showTime?: boolean;
 }) {
-  const { result, depositHash, explorerUrl, recipient, before, after, ethUsd, showTime = true } = opts;
-  const deposit = `${explorerUrl}/tx/${depositHash}`;
+  const { result, depositHash, origin, dest, recipient, before, after, ethUsd, showTime = true } = opts;
+  const deposit = origin ? `${origin.explorer}/tx/${depositHash}` : depositHash;
   if (result.status === 'filled') {
-    const lines = recipient ? [`${c.dim('To')}        ${c.addr(recipient)} ${c.dim('(Ethereum)')}`] : [];
+    const lines = recipient ? [`${c.dim('To')}        ${c.addr(recipient)}${dest ? c.dim(` (${dest.name})`) : ''}`] : [];
     if (before !== undefined && after !== undefined && after > before) {
       lines.push(`${c.dim('Received')}  ${c.money.bold(withUsd(after - before, ethUsd))}`);
       lines.push(`${c.dim('Balance')}   ${formatEthShort(before)} ${sym.arrow} ${formatEthShort(after)} ETH`);
     }
     if (showTime) lines.push(`${c.dim('Time')}      about ${result.seconds} s`);
-    lines.push('', c.dim('Deposit  ') + c.addr(deposit), c.dim('Arrival  ') + c.addr(`https://etherscan.io/tx/${result.fillHash}`));
-    console.log('\n' + box(lines, { title: `${emoji('🎉')}Arrived on Ethereum` }));
+    lines.push('', c.dim('Deposit  ') + c.addr(deposit), c.dim('Arrival  ') + c.addr(dest ? `${dest.explorer}/tx/${result.fillHash}` : result.fillHash));
+    console.log('\n' + box(lines, { title: `${emoji('🎉')}Arrived${dest ? ` on ${dest.name}` : ''}` }));
     return;
   }
   if (result.status === 'refunded') {
     const lines = [
-      'Across could not deliver this one, so it was refunded to this',
-      'wallet on Robinhood Chain as WETH. Run "Sell tokens for ETH" to',
-      'turn the WETH back into ETH.',
+      'Across could not deliver this one, so it was refunded to your',
+      `wallet on ${origin?.name ?? 'the chain it left'} as WETH (wrapped ETH, worth the same).`,
+      origin?.id === ACROSS.ROBINHOOD.id
+        ? 'Run "Sell tokens for ETH" to turn the WETH back into ETH.'
+        : 'Unwrap it back to ETH in your wallet app or on Uniswap.',
       '',
       c.dim('Deposit  ') + c.addr(deposit),
     ];

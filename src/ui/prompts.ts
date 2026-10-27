@@ -8,8 +8,12 @@ import { tokenTable } from './table.js';
 import { BridgeAmount } from '../actions/bridge.js';
 import { usdToWei } from '../bridge/across.js';
 
+/**
+ * Step 1. Five plain choices; "Sell tokens for ETH" then asks what happens to the ETH, so the menu
+ * stays short while every sell mode is still one question away.
+ */
 export async function promptMode(bridge: boolean): Promise<OperationMode | 'QUIT'> {
-  return select<OperationMode | 'QUIT'>({
+  const choice = await select<OperationMode | 'QUIT'>({
     message: 'What would you like to do?',
     theme: promptTheme,
     choices: [
@@ -21,24 +25,14 @@ export async function promptMode(bridge: boolean): Promise<OperationMode | 'QUIT
       {
         name: `${emoji('💱')}Sell tokens for ETH`,
         value: 'SELL',
-        description: 'Swap tokens into ETH. The ETH stays in this wallet.',
-      },
-      {
-        name: `${emoji('🧹')}Sell everything, then send the ETH`,
-        value: 'SELL_AND_SWEEP',
-        description: 'Swap tokens into ETH, then send all of it to another address in one go.',
+        description: 'Swap tokens into ETH. Next you choose: keep the ETH, send it on, or bridge it to Ethereum.',
       },
       ...(bridge
         ? [
             {
-              name: `${emoji('🌉')}Bridge ETH from Robinhood Chain to Ethereum`,
+              name: `${emoji('🌉')}Bridge ETH between Robinhood Chain and Ethereum`,
               value: 'BRIDGE' as const,
-              description: 'Turn your ETH on Robinhood Chain into ETH on Ethereum (your wallet or an exchange), through Across.',
-            },
-            {
-              name: `${emoji('🚀')}Sell everything, then bridge the ETH to Ethereum`,
-              value: 'SELL_AND_BRIDGE' as const,
-              description: 'Swap tokens into ETH, then move all of it to ETH on Ethereum in one go.',
+              description: 'Move ETH from Robinhood Chain to Ethereum, or from Ethereum to Robinhood Chain, through Across.',
             },
           ]
         : []),
@@ -48,6 +42,30 @@ export async function promptMode(bridge: boolean): Promise<OperationMode | 'QUIT
         description: 'Send junk or scam tokens to a burn address so they stop cluttering your wallet. Permanent.',
       },
       { name: `${emoji('👋')}Exit`, value: 'QUIT', description: 'Close the tool without doing anything.' },
+    ],
+  });
+  if (choice !== 'SELL') return choice;
+  return select<OperationMode>({
+    message: 'What should happen to the ETH from the sales?',
+    theme: promptTheme,
+    choices: [
+      { name: 'Keep it in this wallet', value: 'SELL' },
+      { name: 'Send it to another wallet', value: 'SELL_AND_SWEEP', description: 'All the ETH goes to another address once the sales are done.' },
+      ...(bridge
+        ? [{ name: 'Bridge it to Ethereum', value: 'SELL_AND_BRIDGE' as const, description: 'All the ETH becomes ETH on Ethereum (your wallet or an exchange), through Across.' }]
+        : []),
+    ],
+  });
+}
+
+/** Which way to bridge. */
+export async function promptBridgeDirection(): Promise<'toEthereum' | 'toRobinhood'> {
+  return select<'toEthereum' | 'toRobinhood'>({
+    message: 'Which way?',
+    theme: promptTheme,
+    choices: [
+      { name: `Robinhood Chain ${sym.arrow} Ethereum`, value: 'toEthereum', description: 'Your ETH on Robinhood Chain becomes ETH on Ethereum (your wallet or an exchange).' },
+      { name: `Ethereum ${sym.arrow} Robinhood Chain`, value: 'toRobinhood', description: 'Your ETH on Ethereum becomes ETH on Robinhood Chain. Needs a little ETH on Ethereum for the fee.' },
     ],
   });
 }
@@ -222,22 +240,22 @@ export async function confirmAddressTail(address: Address): Promise<boolean> {
   return false;
 }
 
-/** Where bridged ETH should arrive on Ethereum. The same address is the default: the same key owns it there. */
-export async function promptBridgeDestination(sender: Address, saved?: Address): Promise<{ address: Address; typed: boolean }> {
+/** Where bridged ETH should arrive. The same address is the default: the same key owns it on every chain. */
+export async function promptBridgeDestination(sender: Address, chainName: string, saved?: Address): Promise<{ address: Address; typed: boolean }> {
   const usableSaved = saved && saved.toLowerCase() !== sender.toLowerCase() && validateDestination(saved, sender) === true ? saved : undefined;
   const where = await select<'self' | 'saved' | 'other'>({
-    message: 'Where should the ETH arrive on Ethereum?',
+    message: `Where should the ETH arrive on ${chainName}?`,
     theme: promptTheme,
     choices: [
-      { name: `My own wallet (${sender.slice(0, 6)}…${sender.slice(-4)})`, value: 'self', description: 'The same address, on Ethereum. Your key controls it there too.' },
+      { name: `My own wallet (${sender.slice(0, 6)}…${sender.slice(-4)})`, value: 'self', description: `The same address, on ${chainName}. Your key controls it there too.` },
       ...(usableSaved ? [{ name: `My saved address (${usableSaved.slice(0, 6)}…${usableSaved.slice(-4)})`, value: 'saved' as const }] : []),
-      { name: 'Another address', value: 'other', description: 'Another wallet, or an exchange deposit address for ETH on Ethereum.' },
+      { name: 'Another address', value: 'other', description: `Another wallet, or an exchange deposit address for ETH on ${chainName}.` },
     ],
   });
   if (where === 'self') return { address: sender, typed: false };
   if (where === 'saved') return { address: usableSaved!, typed: false };
   const value = await input({
-    message: 'Paste the Ethereum address:',
+    message: `Paste the ${chainName} address:`,
     theme: promptTheme,
     validate: (v) => {
       const ok = validateDestination(v, sender);

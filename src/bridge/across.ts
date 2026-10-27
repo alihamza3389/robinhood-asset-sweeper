@@ -13,13 +13,13 @@ import {
   zeroAddress,
 } from 'viem';
 import { getJson } from '../http.js';
-import { ACROSS, DEFAULTS, UNISWAP_V3 } from '../constants.js';
+import { ACROSS, BridgeRoute } from '../constants.js';
 
 /**
- * Robinhood Chain ETH -> Ethereum ETH through the Across Swap API (ported from across-bridge, which
- * has done real bridges). ETH -> ETH only: the cheapest route at every size measured, its guaranteed
- * output equals the expected one, and the deposit is one depositNative call that is checked field by
- * field before it goes near the key.
+ * ETH between Robinhood Chain and Ethereum (either way) through the Across Swap API (ported from
+ * across-bridge, which has done real bridges). ETH -> ETH only: the cheapest route at every size
+ * measured, its guaranteed output equals the expected one, and the deposit is one depositNative call
+ * that is checked field by field, against the pinned contracts for the route, before it goes near the key.
  */
 
 /** A reason the bridge refused. Always thrown before anything is signed. */
@@ -30,7 +30,6 @@ const fail = (msg: string): never => {
 };
 
 const NATIVE = zeroAddress;
-const ORIGIN_CHAIN_ID = DEFAULTS.chainId;
 /** Comparison quotes are informational; never let them hold up the real one. */
 const COMPETITOR_TIMEOUT_MS = 8_000;
 /** Two independent ETH/USD sources must agree this closely before a dollar amount is converted. */
@@ -48,17 +47,17 @@ export interface AcrossQuote {
   swapTx: { chainId: number; to: Address; data: Hex; value: string; gas: number | string; simulationSuccess: boolean };
 }
 
-export function fetchAcrossQuote(amount: bigint, from: Address, recipient: Address): Promise<AcrossQuote> {
+export function fetchAcrossQuote(route: BridgeRoute, amount: bigint, from: Address, recipient: Address): Promise<AcrossQuote> {
   const q = new URLSearchParams({
     tradeType: 'exactInput',
     amount: amount.toString(),
     inputToken: NATIVE,
-    originChainId: String(ORIGIN_CHAIN_ID),
+    originChainId: String(route.from.id),
     outputToken: NATIVE,
-    destinationChainId: String(ACROSS.DEST_CHAIN_ID),
+    destinationChainId: String(route.to.id),
     depositor: from,
     recipient,
-    // Explicit, so an unfilled deposit always comes back to this wallet on Robinhood Chain (as WETH).
+    // Explicit, so an unfilled deposit always comes back to this wallet on the chain it left (as WETH).
     refundOnOrigin: 'true',
     refundAddress: from,
   });
@@ -72,11 +71,11 @@ export interface Limits {
 }
 
 /** Across's current limits for this route, or undefined if the API does not answer. */
-export async function fetchLimits(): Promise<Limits | undefined> {
+export async function fetchLimits(route: BridgeRoute): Promise<Limits | undefined> {
   const q = new URLSearchParams({
-    token: UNISWAP_V3.WETH,
-    originChainId: String(ORIGIN_CHAIN_ID),
-    destinationChainId: String(ACROSS.DEST_CHAIN_ID),
+    token: route.from.weth,
+    originChainId: String(route.from.id),
+    destinationChainId: String(route.to.id),
   });
   try {
     const l = await getJson<{ minDeposit: string; maxDeposit: string; maxDepositInstant: string }>(
@@ -91,12 +90,12 @@ export async function fetchLimits(): Promise<Limits | undefined> {
 
 export interface Competitor {
   name: string;
-  /** Expected ETH arriving on Ethereum for the same ETH in. */
+  /** Expected ETH arriving for the same ETH in. */
   out: bigint;
 }
 
 /** Other bridges' quotes for the same transfer, for comparison only. A failure just drops that row. */
-export async function fetchCompetitors(amount: bigint, from: Address): Promise<Competitor[]> {
+export async function fetchCompetitors(route: BridgeRoute, amount: bigint, from: Address): Promise<Competitor[]> {
   const relay = getJson<{ details: { currencyOut: { amount: string } } }>(
     'https://api.relay.link/quote',
     {
@@ -107,8 +106,8 @@ export async function fetchCompetitors(amount: bigint, from: Address): Promise<C
       body: JSON.stringify({
         user: from,
         recipient: from,
-        originChainId: ORIGIN_CHAIN_ID,
-        destinationChainId: ACROSS.DEST_CHAIN_ID,
+        originChainId: route.from.id,
+        destinationChainId: route.to.id,
         originCurrency: NATIVE,
         destinationCurrency: NATIVE,
         amount: amount.toString(),
@@ -120,10 +119,10 @@ export async function fetchCompetitors(amount: bigint, from: Address): Promise<C
 
   // deBridge charges a flat fee on top of the amount; subtract it so every row is "ETH out for this ETH in".
   const debridgeQ = new URLSearchParams({
-    srcChainId: String(ORIGIN_CHAIN_ID),
+    srcChainId: String(route.from.id),
     srcChainTokenIn: NATIVE,
     srcChainTokenInAmount: amount.toString(),
-    dstChainId: String(ACROSS.DEST_CHAIN_ID),
+    dstChainId: String(route.to.id),
     dstChainTokenOut: NATIVE,
     dstChainTokenOutAmount: 'auto',
     dstChainTokenOutRecipient: from,
@@ -140,9 +139,8 @@ export async function fetchCompetitors(amount: bigint, from: Address): Promise<C
   }));
 
   // ChangeNOW is custodial (you send to their address and trust the payout): price comparison only.
-  // Their network code for Robinhood Chain ETH is "ethhood".
   const changenow = getJson<{ estimatedAmount: number }>(
-    `https://api.changenow.io/v1/exchange-amount/${formatEther(amount)}/ethhood_eth`,
+    `https://api.changenow.io/v1/exchange-amount/${formatEther(amount)}/${route.from.changenow}_${route.to.changenow}`,
     { timeoutMs: COMPETITOR_TIMEOUT_MS }
   ).then((d): Competitor => ({ name: 'ChangeNOW (custodial)', out: parseEther(d.estimatedAmount.toFixed(18)) }));
 
@@ -159,6 +157,7 @@ export const PERIPHERY_ABI = parseAbi([
  * so the JSON around it is never trusted for where the money goes.
  */
 export function verifyQuote(
+  route: BridgeRoute,
   q: AcrossQuote,
   amount: bigint,
   from: Address,
@@ -166,7 +165,7 @@ export function verifyQuote(
   now = Date.now()
 ): { guaranteed: bigint; gasLimit: bigint } {
   const tx = q.swapTx;
-  if (tx.chainId !== ORIGIN_CHAIN_ID) fail(`The quote is for chain ${tx.chainId}, not Robinhood Chain.`);
+  if (tx.chainId !== route.from.id) fail(`The quote is for chain ${tx.chainId}, not ${route.from.name}.`);
   if (!isAddressEqual(tx.to, ACROSS.PERIPHERY)) fail(`Across wants the ETH sent to ${tx.to}, not its known contract. Refusing.`);
   if (BigInt(tx.value) !== amount) fail('The quote is for a different amount than you chose.');
   if (q.approvalTxns && q.approvalTxns.length) fail('The quote asks for token approvals, which bridging ETH never needs.');
@@ -186,12 +185,12 @@ export function verifyQuote(
   }
   const [spokePool, depositor, toBytes, inputToken, inputAmount, outputToken, outputAmount, destId, , , fillDeadline, , message] =
     call.args;
-  if (!isAddressEqual(spokePool, ACROSS.SPOKE_POOL)) fail('The deposit targets an unknown Across contract. Refusing.');
+  if (!isAddressEqual(spokePool, route.from.spokePool)) fail('The deposit targets an unknown Across contract. Refusing.');
   if (!isAddressEqual(depositor, from)) fail('The deposit is not from this wallet. Refusing.');
   if (toBytes.toLowerCase() !== pad(recipient).toLowerCase()) fail('The deposit pays a different address than the one you chose. Refusing.');
-  if (!isAddressEqual(inputToken, UNISWAP_V3.WETH) || inputAmount !== amount) fail('The deposit has the wrong token or amount.');
-  if (outputToken.toLowerCase() !== pad(ACROSS.MAINNET_WETH).toLowerCase()) fail('The deposit would not deliver ETH on Ethereum.');
-  if (destId !== BigInt(ACROSS.DEST_CHAIN_ID)) fail(`The deposit goes to chain ${destId}, not Ethereum.`);
+  if (!isAddressEqual(inputToken, route.from.weth) || inputAmount !== amount) fail('The deposit has the wrong token or amount.');
+  if (outputToken.toLowerCase() !== pad(route.to.weth).toLowerCase()) fail(`The deposit would not deliver ETH on ${route.to.name}.`);
+  if (destId !== BigInt(route.to.id)) fail(`The deposit goes to chain ${destId}, not ${route.to.name}.`);
   if (message !== '0x') fail('The deposit carries extra instructions; a plain ETH bridge never does.');
   // The relayer must deliver at least outputAmount, so this is the real guarantee.
   if (outputAmount !== BigInt(q.minOutputAmount)) fail('The deposit guarantees a different amount than the quote shows.');
@@ -240,15 +239,17 @@ export interface PlannedTx {
   value: bigint;
   gasLimit: bigint;
   maxFee: bigint;
+  /** Tip to the block builder: 0 on Robinhood Chain, small on Ethereum (or it may not be picked up). */
+  priorityFee: bigint;
 }
 
 /** What differs between signed bytes and the checked plan, or undefined if nothing does. */
-export async function signedMismatch(signed: TransactionSerialized, p: PlannedTx, from: Address): Promise<string | undefined> {
+export async function signedMismatch(signed: TransactionSerialized, p: PlannedTx, from: Address, chainId: number): Promise<string | undefined> {
   const tx = parseTransaction(signed);
   const signer = await recoverTransactionAddress({ serializedTransaction: signed });
   return (
     !isAddressEqual(signer, from) ? `signer ${signer}` :
-    tx.chainId !== ORIGIN_CHAIN_ID ? `chain ${tx.chainId}` :
+    tx.chainId !== chainId ? `chain ${tx.chainId}` :
     !tx.to || !isAddressEqual(tx.to, p.to) ? `to ${tx.to}` :
     tx.value !== p.value ? `value ${tx.value}` :
     tx.data?.toLowerCase() !== p.data.toLowerCase() ? 'calldata' :
@@ -256,7 +257,7 @@ export async function signedMismatch(signed: TransactionSerialized, p: PlannedTx
     (tx.maxFeePerGas ?? tx.gasPrice) !== p.maxFee ? 'fee' :
     tx.type !== 'eip1559' ? `type ${tx.type}` :
     // viem decodes a zero priority fee as undefined.
-    (tx.maxPriorityFeePerGas ?? 0n) !== 0n ? `priority fee ${tx.maxPriorityFeePerGas}` :
+    (tx.maxPriorityFeePerGas ?? 0n) !== p.priorityFee ? `priority fee ${tx.maxPriorityFeePerGas}` :
     (tx.accessList?.length ?? 0) !== 0 ? 'access list' :
     // An EIP-7702 authorization would let the transaction change what code the wallet runs.
     'authorizationList' in tx && (tx as { authorizationList?: unknown[] }).authorizationList?.length ? 'authorization list' :
@@ -265,7 +266,7 @@ export async function signedMismatch(signed: TransactionSerialized, p: PlannedTx
 }
 
 export type DepositStatus =
-  | { status: 'filled'; fillHash: Hex }
+  | { status: 'filled'; fillHash: Hex; originChainId?: number; destinationChainId?: number }
   | { status: 'refunded'; refundHash?: Hex }
   | { status: 'pending'; detail: string }
   /** Across has no deposit with this hash (yet: a brand-new one takes a few seconds to appear). */
@@ -276,8 +277,16 @@ export async function fetchDepositStatus(depositHash: Hex): Promise<DepositStatu
   const res = await fetch(`${ACROSS.API}/deposit/status?depositTxnRef=${depositHash}`, { signal: AbortSignal.timeout(15_000) });
   if (res.status === 404) return { status: 'unknown' };
   if (!res.ok) throw new Error(`Across answered ${res.status}`);
-  const s = (await res.json()) as { status: string; fillTxnRef?: Hex; depositRefundTxnRef?: Hex };
-  if (s.status === 'filled' && s.fillTxnRef) return { status: 'filled', fillHash: s.fillTxnRef };
+  const s = (await res.json()) as {
+    status: string;
+    fillTxnRef?: Hex;
+    depositRefundTxnRef?: Hex;
+    originChainId?: number;
+    destinationChainId?: number;
+  };
+  if (s.status === 'filled' && s.fillTxnRef) {
+    return { status: 'filled', fillHash: s.fillTxnRef, originChainId: s.originChainId, destinationChainId: s.destinationChainId };
+  }
   if (s.status === 'expired' || s.status === 'refunded') return { status: 'refunded', refundHash: s.depositRefundTxnRef };
   return { status: 'pending', detail: s.status };
 }

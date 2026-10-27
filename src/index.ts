@@ -5,10 +5,10 @@ import { HELP, loadConfig, parseCli } from './config.js';
 import { askBlockscoutKey, envExists, runSetupWizard } from './setup.js';
 import { runReset } from './reset.js';
 import { checkForUpdate, RESTART_EXIT_CODE } from './update.js';
-import { createClients, createEthereumClient } from './chain.js';
+import { createClients, createEthereumClients } from './chain.js';
 import { chooseBridgeDestination, executeBridge, quoteAndConfirm, runBridgeMode, runTrack } from './bridgeFlow.js';
 import { fetchLimits } from './bridge/across.js';
-import { CONTRACTS, DEAD_ADDRESS, DEFAULTS, FALLBACK_STOCK_TOKENS } from './constants.js';
+import { BRIDGE_ROUTES, CONTRACTS, DEAD_ADDRESS, DEFAULTS, FALLBACK_STOCK_TOKENS } from './constants.js';
 import { Asset, ActionResult, OperationMode, TokenAsset, hasFinalEthStep, sellsTokens } from './types.js';
 import { loadCustomTokens, saveCustomToken } from './scan/customTokens.js';
 import { fetchRobinhoodStocks } from './scan/registry.js';
@@ -134,12 +134,12 @@ async function main() {
   }
   const mode: OperationMode = choice;
   if (mode === 'BRIDGE') {
-    await runBridgeMode({ config, ctx: { publicClient, walletClient, owner: sender, dryRun: config.dryRun } });
+    await runBridgeMode({ config, robinhood: { publicClient, walletClient, owner: sender, dryRun: config.dryRun } });
     printDonations();
     return;
   }
   let destination: Address | undefined;
-  let l1: ReturnType<typeof createEthereumClient> | undefined;
+  let ethereum: ReturnType<typeof createEthereumClients> | undefined;
   if (mode === 'TRANSFER' || mode === 'SELL_AND_SWEEP') {
     tip('Double-check the address. Crypto sent to the wrong address cannot be recovered.');
     destination = await promptDestination(sender, config.defaultDestination);
@@ -160,8 +160,13 @@ async function main() {
       if (!(await confirm({ message: 'Continue anyway?', default: false, theme: promptTheme }))) return;
     }
   } else if (mode === 'SELL_AND_BRIDGE') {
-    l1 = createEthereumClient(config.blockscoutApiKey);
-    destination = await chooseBridgeDestination(sender, config.defaultDestination, l1);
+    ethereum = createEthereumClients(config);
+    destination = await chooseBridgeDestination({
+      route: BRIDGE_ROUTES.toEthereum,
+      sender,
+      saved: config.defaultDestination,
+      dest: ethereum.publicClient,
+    });
     if (!destination) return;
   } else if (mode === 'BURN') {
     destination = DEAD_ADDRESS;
@@ -170,7 +175,7 @@ async function main() {
   // Step 2: scan. Blockscout lists the tokens, the chain confirms balances.
   step(2, STEPS, 'Looking through your wallet');
   // Needed only at the review; fetched alongside the scan so it never holds anything up.
-  const limitsP = mode === 'SELL_AND_BRIDGE' ? fetchLimits() : undefined;
+  const limitsP = mode === 'SELL_AND_BRIDGE' ? fetchLimits(BRIDGE_ROUTES.toEthereum) : undefined;
   const spinner = ora({ text: 'Finding your tokens and prices…', discardStdin: false }).start();
   let scan: ScanResult;
   let stocks: Set<string>;
@@ -255,6 +260,9 @@ async function main() {
             'Send a little ETH (a dollar or two is plenty) to:',
             c.addr.bold(sender),
             'then start the tool again.',
+            '',
+            c.dim('Have ETH on Ethereum? Choose "Bridge ETH", then'),
+            c.dim(`"Ethereum ${sym.arrow} Robinhood Chain" to bring some over.`),
           ],
           { title: `${emoji('⛽')}No ETH for fees`, color: c.danger }
         )
@@ -357,10 +365,11 @@ async function main() {
     } else {
       console.log(`\n${c.bold('Now the bridge.')} ${c.dim('Here is the quote for all your ETH:')}`);
       if (config.dryRun) tip('Practice run: the sales above were only simulated, so this quote uses the ETH you have now.');
-      const q = await quoteAndConfirm({ ctx, amountArg: { kind: 'max' }, recipient: destination!, ethUsd: prices.ethUsd, ask: !config.dryRun });
+      const route = BRIDGE_ROUTES.toEthereum;
+      const q = await quoteAndConfirm({ ctx, route, amountArg: { kind: 'max' }, recipient: destination!, ethUsd: prices.ethUsd, ask: !config.dryRun });
       if (q) {
         results.push(
-          await executeBridge({ ctx, native: scan.native, q, l1: l1!, explorerUrl: config.explorerUrl, ethUsd: prices.ethUsd, label: c.dim(`[${n}/${n}]`) })
+          await executeBridge({ ctx, native: scan.native, q, dest: ethereum!.publicClient, ethUsd: prices.ethUsd, label: c.dim(`[${n}/${n}]`) })
         );
       }
     }

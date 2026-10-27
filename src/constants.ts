@@ -98,21 +98,65 @@ export const DEAD_ADDRESS: Address = '0x000000000000000000000000000000000000dEaD
 /** Second public Robinhood Chain RPC (Allnodes PublicNode). Tested: full method support, broadcasts transactions. */
 export const PUBLICNODE_RPC = 'https://robinhood-rpc.publicnode.com';
 
-// Across: bridges Robinhood Chain ETH to Ethereum ETH. The periphery and spoke pool were verified on
-// Blockscout (2026-10-13); if the Across API ever routes anywhere else, the tool refuses, so a changed or
-// compromised API cannot redirect funds. Check docs.across.to before updating these.
+// Across: bridges ETH between Robinhood Chain and Ethereum. Every address the tool will deposit into is
+// pinned here; if the Across API ever routes anywhere else, the tool refuses, so a changed or compromised
+// API cannot redirect funds. Check docs.across.to before updating these.
+export interface AcrossChain {
+  id: number;
+  name: string;
+  /** Across SpokePool on this chain (deposits from here go into it). */
+  spokePool: Address;
+  /** Across bridges native ETH as this chain's WETH under the hood (limits and refunds are in it). */
+  weth: Address;
+  explorer: string;
+  /** ChangeNOW's code for ETH on this chain (comparison quotes only). */
+  changenow: string;
+}
+
+const ACROSS_ROBINHOOD: AcrossChain = {
+  id: 4663,
+  name: 'Robinhood Chain',
+  // Universal_SpokePool proxy, verified on Blockscout 2026-10-13.
+  spokePool: getAddress('0xD29C85F15DF544bA632C9E25829fd29d767d7978'),
+  weth: getAddress('0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73'),
+  explorer: 'https://robin.etherscan.io',
+  changenow: 'ethhood',
+};
+
+const ACROSS_ETHEREUM: AcrossChain = {
+  id: 1,
+  name: 'Ethereum',
+  // Across's main Ethereum SpokePool (WETH, millions of deposits), checked on-chain 2026-10-28.
+  spokePool: getAddress('0x5c7BCd6E7De5423a257D81B442095A1a6ced35C5'),
+  weth: getAddress('0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'),
+  explorer: 'https://etherscan.io',
+  changenow: 'eth',
+};
+
 export const ACROSS = {
   API: 'https://app.across.to/api',
-  DEST_CHAIN_ID: 1,
+  /** SpokePoolPeriphery: the same verified contract at the same address on both chains. */
   PERIPHERY: getAddress('0x97CCDBea4632140639aD5eA9b944aa034eb15fD4'),
-  SPOKE_POOL: getAddress('0xD29C85F15DF544bA632C9E25829fd29d767d7978'),
-  MAINNET_WETH: getAddress('0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'),
   /** Upper bound on the gas a deposit may use; the ETH kept back for the fee is sized from it. */
   MAX_GAS: 400_000n,
+  ROBINHOOD: ACROSS_ROBINHOOD,
+  ETHEREUM: ACROSS_ETHEREUM,
 } as const;
 
-/** Ethereum mainnet RPC, used to check the recipient and show the balance after a bridge. */
+export interface BridgeRoute {
+  from: AcrossChain;
+  to: AcrossChain;
+}
+
+export const BRIDGE_ROUTES = {
+  toEthereum: { from: ACROSS_ROBINHOOD, to: ACROSS_ETHEREUM },
+  toRobinhood: { from: ACROSS_ETHEREUM, to: ACROSS_ROBINHOOD },
+} as const satisfies Record<string, BridgeRoute>;
+
+/** Ethereum mainnet RPCs: PublicNode for reads and sends, Flashbots Protect as a second sender
+ * (it also keeps a pending deposit away from front-running bots). */
 export const ETHEREUM_RPC = 'https://ethereum-rpc.publicnode.com';
+export const FLASHBOTS_RPC = 'https://rpc.flashbots.net';
 
 export const API = {
   blockscoutPro: (chainId: number) => `https://api.blockscout.com/${chainId}/api/v2`,

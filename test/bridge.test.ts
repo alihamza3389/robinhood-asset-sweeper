@@ -2,9 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Address, encodeFunctionData, getAddress, Hex, pad, parseEther, TransactionSerialized } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
-import { ACROSS, UNISWAP_V3 } from '../src/constants.js';
+import { ACROSS, BRIDGE_ROUTES, BridgeRoute } from '../src/constants.js';
 import { AcrossQuote, BridgeError, PERIPHERY_ABI, PlannedTx, agreedPrice, signedMismatch, usdToWei, verifyQuote } from '../src/bridge/across.js';
-import { bridgeFee, checkEthereumRecipient, isStale, trackDeposit, BridgeQuote } from '../src/actions/bridge.js';
+import { bridgeFee, checkRecipient, isStale, priorityFeeFor, trackDeposit, BridgeQuote } from '../src/actions/bridge.js';
 import { formatEthShort } from '../src/ui/format.js';
 import { comparisonRows } from '../src/ui/bridgeScreens.js';
 import { parseCli } from '../src/config.js';
@@ -20,13 +20,14 @@ type Args = {
   spokePool: Address; depositor: Address; recipient: Address; inputToken: Address; inputAmount: bigint;
   outputToken: Address; outputAmount: bigint; destId: bigint; fillDeadline: number; message: Hex;
 };
-const good: Args = {
-  spokePool: ACROSS.SPOKE_POOL, depositor: FROM, recipient: TO, inputToken: UNISWAP_V3.WETH, inputAmount: AMOUNT,
-  outputToken: ACROSS.MAINNET_WETH, outputAmount: OUT, destId: 1n, fillDeadline: NOW / 1000 + 3600, message: '0x',
-};
+const ROUTES: [string, BridgeRoute][] = [['Robinhood -> Ethereum', BRIDGE_ROUTES.toEthereum], ['Ethereum -> Robinhood', BRIDGE_ROUTES.toRobinhood]];
+const goodFor = (route: BridgeRoute): Args => ({
+  spokePool: route.from.spokePool, depositor: FROM, recipient: TO, inputToken: route.from.weth, inputAmount: AMOUNT,
+  outputToken: route.to.weth, outputAmount: OUT, destId: BigInt(route.to.id), fillDeadline: NOW / 1000 + 3600, message: '0x',
+});
 
-function quote(args: Partial<Args> = {}, top: Partial<AcrossQuote> = {}, tx: Partial<AcrossQuote['swapTx']> = {}): AcrossQuote {
-  const a = { ...good, ...args };
+function quote(route: BridgeRoute, args: Partial<Args> = {}, top: Partial<AcrossQuote> = {}, tx: Partial<AcrossQuote['swapTx']> = {}): AcrossQuote {
+  const a = { ...goodFor(route), ...args };
   const data = encodeFunctionData({
     abi: PERIPHERY_ABI,
     functionName: 'depositNative',
@@ -40,56 +41,65 @@ function quote(args: Partial<Args> = {}, top: Partial<AcrossQuote> = {}, tx: Par
     expectedFillTime: 2,
     quoteExpiryTimestamp: NOW / 1000 + 300,
     fees: { total: { amountUsd: '0.1' }, originGas: { amountUsd: '0.01' } },
-    swapTx: { chainId: 4663, to: ACROSS.PERIPHERY, data, value: AMOUNT.toString(), gas: 150_000, simulationSuccess: true, ...tx },
+    swapTx: { chainId: route.from.id, to: ACROSS.PERIPHERY, data, value: AMOUNT.toString(), gas: 150_000, simulationSuccess: true, ...tx },
     ...top,
   };
 }
 
-const verify = (q: AcrossQuote, recipient = TO) => verifyQuote(q, AMOUNT, FROM, recipient, NOW);
+for (const [name, route] of ROUTES) {
+const verify = (q: AcrossQuote, recipient = TO) => verifyQuote(route, q, AMOUNT, FROM, recipient, NOW);
+const other = route === BRIDGE_ROUTES.toEthereum ? BRIDGE_ROUTES.toRobinhood : BRIDGE_ROUTES.toEthereum;
 
-test('bridge: a correct Across deposit passes and returns the guarantee', () => {
-  const { guaranteed, gasLimit } = verify(quote());
+test(`bridge ${name}: a correct Across deposit passes and returns the guarantee`, () => {
+  const { guaranteed, gasLimit } = verify(quote(route));
   assert.equal(guaranteed, OUT);
   assert.equal(gasLimit, 195_000n);
 });
 
-test('bridge: every tampered quote is refused before signing', () => {
+test(`bridge ${name}: a deposit built for the other direction is refused`, () => {
+  assert.throws(() => verify(quote(other)), BridgeError);
+});
+
+test(`bridge ${name}: every tampered quote is refused before signing`, () => {
+  const quoteR = (args: Partial<Args> = {}, top: Partial<AcrossQuote> = {}, tx: Partial<AcrossQuote['swapTx']> = {}) => quote(route, args, top, tx);
   const cases: [string, AcrossQuote][] = [
-    ['other contract', quote({}, {}, { to: OTHER })],
-    ['other chain', quote({}, {}, { chainId: 1 })],
-    ['other value', quote({}, {}, { value: (AMOUNT + 1n).toString() })],
-    ['failed simulation', quote({}, {}, { simulationSuccess: false })],
-    ['too much gas', quote({}, {}, { gas: '400000' })],
-    ['not a deposit', quote({}, {}, { data: '0xdeadbeef' })],
-    ['approvals', quote({}, { approvalTxns: [{}] })],
-    ['route type', quote({}, { crossSwapType: 'anyToBridgeable' })],
-    ['expired', quote({}, { quoteExpiryTimestamp: NOW / 1000 + 30 })],
-    ['no expiry', quote({}, { quoteExpiryTimestamp: Number.NaN })],
-    ['spoke pool', quote({ spokePool: OTHER })],
-    ['depositor', quote({ depositor: OTHER })],
-    ['recipient', quote({ recipient: OTHER })],
-    ['input token', quote({ inputToken: OTHER })],
-    ['input amount', quote({ inputAmount: AMOUNT - 1n })],
-    ['output token', quote({ outputToken: OTHER })],
-    ['output below guarantee', quote({ outputAmount: OUT - 1n })],
-    ['destination chain', quote({ destId: 10n })],
-    ['extra message', quote({ message: '0x1234' })],
-    ['deadline too close', quote({ fillDeadline: NOW / 1000 + 60 })],
+    ['other contract', quoteR({}, {}, { to: OTHER })],
+    ['other chain', quoteR({}, {}, { chainId: 10 })],
+    ['other value', quoteR({}, {}, { value: (AMOUNT + 1n).toString() })],
+    ['failed simulation', quoteR({}, {}, { simulationSuccess: false })],
+    ['too much gas', quoteR({}, {}, { gas: '400000' })],
+    ['not a deposit', quoteR({}, {}, { data: '0xdeadbeef' })],
+    ['approvals', quoteR({}, { approvalTxns: [{}] })],
+    ['route type', quoteR({}, { crossSwapType: 'anyToBridgeable' })],
+    ['expired', quoteR({}, { quoteExpiryTimestamp: NOW / 1000 + 30 })],
+    ['no expiry', quoteR({}, { quoteExpiryTimestamp: Number.NaN })],
+    ['spoke pool', quoteR({ spokePool: OTHER })],
+    ['depositor', quoteR({ depositor: OTHER })],
+    ['recipient', quoteR({ recipient: OTHER })],
+    ['input token', quoteR({ inputToken: OTHER })],
+    ['input amount', quoteR({ inputAmount: AMOUNT - 1n })],
+    ['output token', quoteR({ outputToken: OTHER })],
+    ['output below guarantee', quoteR({ outputAmount: OUT - 1n })],
+    ['destination chain', quoteR({ destId: 10n })],
+    ['same chain', quoteR({ destId: BigInt(route.from.id) })],
+    ['extra message', quoteR({ message: '0x1234' })],
+    ['deadline too close', quoteR({ fillDeadline: NOW / 1000 + 60 })],
   ];
   for (const [what, q] of cases) assert.throws(() => verify(q), BridgeError, what);
   // Recipient mismatch from the user's side (quote is fine, user asked for someone else).
-  assert.throws(() => verify(quote(), OTHER), BridgeError);
+  assert.throws(() => verify(quoteR(), OTHER), BridgeError);
   // Pays out more than goes in: the quote is wrong.
-  assert.throws(() => verify(quote({ outputAmount: AMOUNT }, { minOutputAmount: AMOUNT.toString() })), BridgeError);
+  assert.throws(() => verify(quoteR({ outputAmount: AMOUNT }, { minOutputAmount: AMOUNT.toString() })), BridgeError);
 });
+}
 
 test('bridge: the signed transaction must match the checked plan exactly', async () => {
   const account = privateKeyToAccount(generatePrivateKey());
-  const plan: PlannedTx = { to: ACROSS.PERIPHERY, data: '0x609ea081ff', value: AMOUNT, gasLimit: 195_000n, maxFee: 40_000_000n };
+  const plan: PlannedTx = { to: ACROSS.PERIPHERY, data: '0x609ea081ff', value: AMOUNT, gasLimit: 195_000n, maxFee: 40_000_000n, priorityFee: 0n };
   const sign = (p: PlannedTx, extra: Record<string, unknown> = {}) =>
-    account.signTransaction({ chainId: 4663, type: 'eip1559', to: p.to, data: p.data, value: p.value, gas: p.gasLimit, maxFeePerGas: p.maxFee, maxPriorityFeePerGas: 0n, nonce: 7, ...extra } as never) as Promise<TransactionSerialized>;
+    account.signTransaction({ chainId: 4663, type: 'eip1559', to: p.to, data: p.data, value: p.value, gas: p.gasLimit, maxFeePerGas: p.maxFee, maxPriorityFeePerGas: p.priorityFee, nonce: 7, ...extra } as never) as Promise<TransactionSerialized>;
   const signed = await sign(plan);
-  assert.equal(await signedMismatch(signed, plan, account.address), undefined);
+  assert.equal(await signedMismatch(signed, plan, account.address, 4663), undefined);
   const changed: [string, PlannedTx, Address][] = [
     ['to', { ...plan, to: OTHER }, account.address],
     ['value', { ...plan, value: plan.value + 1n }, account.address],
@@ -99,11 +109,17 @@ test('bridge: the signed transaction must match the checked plan exactly', async
     ['signer', plan, OTHER],
   ];
   for (const [what, p, from] of changed) {
-    const m = await signedMismatch(signed, p, from);
+    const m = await signedMismatch(signed, p, from, 4663);
     assert.ok(m && m.startsWith(what), `${what} change not caught (got ${m})`);
   }
-  assert.match((await signedMismatch(await sign(plan, { chainId: 1 }), plan, account.address)) ?? '', /^chain/);
-  assert.match((await signedMismatch(await sign(plan, { maxPriorityFeePerGas: 1n }), plan, account.address)) ?? '', /^priority fee/);
+  assert.match((await signedMismatch(await sign(plan, { chainId: 1 }), plan, account.address, 4663)) ?? '', /^chain/);
+  assert.match((await signedMismatch(await sign(plan, { maxPriorityFeePerGas: 1n }), plan, account.address, 4663)) ?? '', /^priority fee/);
+  // Ethereum: the planned tip is part of the plan, on chain 1.
+  const eth: PlannedTx = { ...plan, maxFee: 300_000_000n, priorityFee: 50_000_000n };
+  const ethSigned = await sign(eth, { chainId: 1 });
+  assert.equal(await signedMismatch(ethSigned, eth, account.address, 1), undefined);
+  assert.match((await signedMismatch(ethSigned, { ...eth, priorityFee: 0n }, account.address, 1)) ?? '', /^priority fee/);
+  assert.match((await signedMismatch(ethSigned, eth, account.address, 4663)) ?? '', /^chain/);
 });
 
 test('bridge: dollar amounts need two prices that agree', () => {
@@ -117,8 +133,10 @@ test('bridge: dollar amounts need two prices that agree', () => {
 });
 
 test('bridge: fee reserve, staleness and display rounding', () => {
-  assert.deepEqual(bridgeFee(0n), { maxFee: 20_000_000n, reserve: 400_000n * 20_000_000n });
+  assert.deepEqual(bridgeFee(0n), { maxFee: 20_000_000n, priorityFee: 0n, reserve: 400_000n * 20_000_000n });
   assert.equal(bridgeFee(50_000_000n).maxFee, 100_000_000n);
+  // The tip is paid on top of the base-fee allowance.
+  assert.equal(bridgeFee(100_000_000n, 50_000_000n).maxFee, 250_000_000n);
   const q = { quotedAt: NOW, expiresAt: NOW + 300_000 } as BridgeQuote;
   assert.equal(isStale(q, NOW + 60_000), false);
   assert.equal(isStale(q, NOW + 91_000), true);
@@ -136,13 +154,22 @@ test('bridge: comparison keeps Across even when five others beat it', () => {
   assert.equal(comparisonRows(200n, others)[0].name.startsWith('Across'), true);
 });
 
-test('bridge: recipient must be a normal wallet on Ethereum', async () => {
+test('bridge: recipient must be a normal wallet on the destination chain', async () => {
   const code = (c: Hex | undefined) => ({ getCode: async () => c });
-  await checkEthereumRecipient(code(undefined), TO);
-  await checkEthereumRecipient(code('0x'), TO);
-  await checkEthereumRecipient(code('0xef01001234567890123456789012345678901234567890'), TO); // EIP-7702 wallet
-  await assert.rejects(checkEthereumRecipient(code('0x6080604052'), TO), BridgeError);
-  await assert.rejects(checkEthereumRecipient({ getCode: async () => { throw new Error('down'); } }, TO), BridgeError);
+  await checkRecipient(code(undefined), 'Ethereum', TO);
+  await checkRecipient(code('0x'), 'Ethereum', TO);
+  await checkRecipient(code('0xef01001234567890123456789012345678901234567890'), 'Ethereum', TO); // EIP-7702 wallet
+  await assert.rejects(checkRecipient(code('0x6080604052'), 'Robinhood Chain', TO), /smart contract on Robinhood Chain/);
+  await assert.rejects(checkRecipient({ getCode: async () => { throw new Error('down'); } }, 'Ethereum', TO), BridgeError);
+});
+
+test('bridge: no tip on Robinhood Chain; on Ethereum the suggested tip, kept within bounds', async () => {
+  const suggest = (tip: bigint | Error) => ({ estimateMaxPriorityFeePerGas: async () => { if (tip instanceof Error) throw tip; return tip; } });
+  assert.equal(await priorityFeeFor(BRIDGE_ROUTES.toEthereum, suggest(5_000_000_000n)), 0n);
+  assert.equal(await priorityFeeFor(BRIDGE_ROUTES.toRobinhood, suggest(100_000_000n)), 100_000_000n);
+  assert.equal(await priorityFeeFor(BRIDGE_ROUTES.toRobinhood, suggest(1n)), 50_000_000n);
+  assert.equal(await priorityFeeFor(BRIDGE_ROUTES.toRobinhood, suggest(90_000_000_000n)), 2_000_000_000n);
+  assert.equal(await priorityFeeFor(BRIDGE_ROUTES.toRobinhood, suggest(new Error('down'))), 50_000_000n);
 });
 
 test('bridge: tracking follows a deposit to its fill, refund or timeout', async () => {

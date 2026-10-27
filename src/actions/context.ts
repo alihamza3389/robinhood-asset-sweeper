@@ -1,4 +1,12 @@
-import { Address, BaseError, ContractFunctionRevertedError, Hash, HttpRequestError, WaitForTransactionReceiptTimeoutError } from 'viem';
+import {
+  Address,
+  BaseError,
+  ContractFunctionRevertedError,
+  Hash,
+  HttpRequestError,
+  PublicClient as ViemPublicClient,
+  WaitForTransactionReceiptTimeoutError,
+} from 'viem';
 import { PublicClient, WalletClient } from '../chain.js';
 
 export interface ActionContext {
@@ -10,7 +18,8 @@ export interface ActionContext {
   onStatus?: (text: string) => void;
 }
 
-export async function waitForSuccess(publicClient: PublicClient, hash: Hash) {
+/** Any chain's client will do (the bridge also sends on Ethereum). */
+export async function waitForSuccess(publicClient: Pick<ViemPublicClient, 'waitForTransactionReceipt'>, hash: Hash) {
   let receipt;
   try {
     receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 180_000 });
