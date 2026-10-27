@@ -74,6 +74,11 @@ export interface ActionResult {
 
 export interface Config {
   privateKey: `0x${string}`;
+  /**
+   * "Just looking": the wallet being explored without a key. When set, practice mode is locked on and
+   * the clients carry no key at all (privateKey is a throwaway that never signs anything).
+   */
+  lookAt?: Address;
   defaultDestination?: Address;
   rpcUrl: string;
   chainId: number;

@@ -157,7 +157,12 @@ export function createClients(config: Config) {
   }
   const transport = failover(endpoints);
   const publicClient = createPublicClient({ chain, transport, batch: { multicall: { batchSize: 16_384 } } });
-  const walletClient = createWalletClient({ account, chain, transport });
+  const keyed = createWalletClient({ account, chain, transport });
+  // Just looking: the client carries only the watched address (no key), so simulations run as that
+  // wallet and any attempt to sign fails outright. Practice mode is locked on as well.
+  const walletClient = config.lookAt
+    ? (createWalletClient({ account: config.lookAt, chain, transport }) as unknown as typeof keyed)
+    : keyed;
 
   return { account, chain, publicClient, walletClient };
 }

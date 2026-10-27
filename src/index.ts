@@ -19,7 +19,7 @@ import { ActionContext, describeError } from './actions/context.js';
 import { sendNative, transferToken } from './actions/transfer.js';
 import { sellToken } from './actions/sell.js';
 import { formatAmount, formatEthShort, usdValue } from './ui/format.js';
-import { banner, box, c, emoji, promptTheme, step, sym, tip } from './ui/theme.js';
+import { banner, box, c, emoji, printPractice, promptTheme, step, sym, tip } from './ui/theme.js';
 import { printDonations, printReview, printSummary, printTokenList, printWalletCard, runStep } from './ui/screens.js';
 import {
   confirmAddressTail,
@@ -107,17 +107,16 @@ async function main() {
     await runTrack(cli.track);
     return;
   }
-  if (cli.setup || (!envExists() && !process.env.PRIVATE_KEY)) {
-    await runSetupWizard();
-  }
-  const config = await loadConfig(cli);
+  const wizard = cli.setup || (!envExists() && !process.env.PRIVATE_KEY && !cli.look) ? await runSetupWizard() : undefined;
+  const config = await loadConfig(cli, { look: wizard?.look });
   if (!config.blockscoutApiKey) {
     config.blockscoutApiKey = await promptBlockscoutKey(config.chainId);
   }
 
   const { account, publicClient, walletClient } = createClients(config);
-  const sender = account.address;
-  console.log(`\n${c.dim('Wallet')}  ${c.addr(sender)}  ${c.dim(`on ${config.chainName}`)}`);
+  const sender = config.lookAt ?? account.address;
+  if (config.lookAt) printPractice(config.lookAt);
+  else console.log(`\n${c.dim('Wallet')}  ${c.addr(sender)}  ${c.dim(`on ${config.chainName}`)}`);
 
   const rpcChainId = await publicClient.getChainId();
   if (rpcChainId !== config.chainId) {
@@ -129,9 +128,21 @@ async function main() {
   // tool (and the key is not asked for again). Only Exit or Ctrl+C closes it.
   for (let first = true; ; first = false) {
     if (!first) console.log(c.dim(`\n${'─'.repeat(48)}\nBack to the menu. Choose Exit when you are done.`));
-    step(1, STEPS, 'Choose what to do', 'Use the arrow keys, then press Enter.');
-    const choice = await promptMode(session.canBridge);
+    step(
+      1,
+      STEPS,
+      'Choose what to do',
+      config.dryRun ? 'Practice mode is ON: everything is simulated, nothing is sent.' : 'Use the arrow keys, then press Enter.'
+    );
+    const choice = await promptMode(session.canBridge, { on: config.dryRun, locked: config.lookAt !== undefined });
     if (choice === 'QUIT') break;
+    if (choice === 'PRACTICE') {
+      // The same config object is read by every action, so this takes effect right away.
+      config.dryRun = !config.dryRun;
+      if (config.dryRun) printPractice();
+      else console.log('\n' + box([c.bold('Practice mode is OFF.'), 'Confirmed actions will now be signed and sent for real.'], { color: c.brand }));
+      continue;
+    }
     try {
       await runAction(choice, session);
     } catch (err) {

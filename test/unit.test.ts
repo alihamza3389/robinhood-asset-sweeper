@@ -395,3 +395,19 @@ test('RPC failover: a send-only endpoint (Flashbots) is never used for reads', a
   assert.equal(await transport.request({ method: 'eth_sendRawTransaction', params: ['0x01'] }), keccak256('0x01'));
   assert.ok(calls.includes('flashbots:eth_sendRawTransaction'));
 });
+
+test('just looking: --look takes an address, and the wallet client holds no key', async () => {
+  const look = parseCli(['--look', '0x2222222222222222222222222222222222222222']).look;
+  assert.equal(look, OTHER);
+  assert.throws(() => parseCli(['--look', 'not-an-address']));
+  const { createClients } = await import('../src/chain.js');
+  const config = {
+    privateKey: '0x' + '11'.repeat(32), lookAt: OTHER, rpcUrl: 'http://127.0.0.1:1', chainId: 4663, chainName: 'x',
+    nativeSymbol: 'ETH', nativeDecimals: 18, explorerUrl: 'x', blockscoutApiKey: '', slippagePercent: 2, maxPriceImpactPercent: 15, dryRun: true,
+  } as const;
+  const { walletClient } = createClients(config as never);
+  // Simulations run as the watched wallet, and there is nothing to sign with.
+  assert.equal(walletClient.account.address, OTHER);
+  assert.equal(walletClient.account.type, 'json-rpc');
+  assert.equal((walletClient.account as { signTransaction?: unknown }).signTransaction, undefined);
+});

@@ -11,6 +11,7 @@ It's made for people who are **not** developers. If you can copy and paste, you 
   💱 Sell tokens for ETH
   🌉 Bridge ETH between Robinhood Chain and Ethereum
   🔥 Get rid of spam tokens
+  🧪 Practice mode: OFF
   👋 Exit
 ```
 
@@ -51,7 +52,7 @@ Version 3 is a full rewrite, focused on safety and on being easy for anyone to u
 - **Practice mode** to try everything without sending anything
 - Finds **tokenized stocks** correctly, and sells tokens like **GLD and ROB through Uniswap** (v3 and v4)
 - A **summary and chart links** before anything is sent
-- **New in v3.3:** bridge ETH between Robinhood Chain and Ethereum (either way) through Across, with a comparison against other bridges, and a shorter menu
+- **New:** bridge ETH between Robinhood Chain and Ethereum (either way) through Across, a shorter menu that returns after every action, a Practice mode switch, and "Just look around" without a key
 
 ---
 
@@ -122,13 +123,19 @@ When it's done, or if you answer **No** anywhere, you're taken **back to the men
 
 ---
 
-## Try it with no risk first
+## Try it with no risk first: Practice mode
 
-Run it in **practice mode**. It goes through every step and checks everything, but never sends anything:
+**Practice mode** goes through every step for real (the scan, the prices, the quotes, the safety checks) but **never sends anything**. There are two ways in:
 
-- **Windows (CMD):** open Command Prompt in the folder and type `run.bat --dry-run`
-- **Windows (PowerShell):** `.\run.ps1 --dry-run`
-- **Mac / Linux:** `./run.sh --dry-run`
+**🧪 Have a wallet? Flip the switch.** Pick **🧪 Practice mode** in the menu to turn it ON, try a sale or a bridge on your own tokens, then turn it OFF and do it for real. No restart needed.
+
+**👀 Just looking? No key needed.** New here, or not ready to trust a new tool with your key? Choose **Just look around** when the tool starts (or in the setup wizard), then paste **any** wallet address: yours, or one you saw on an explorer or on X. You'll see that wallet's real tokens, prices, sell routes and bridge quotes. Without a key nothing can ever be signed or sent.
+
+You can also start straight in either one:
+
+- **Windows (CMD):** `run.bat --dry-run` (practice) or `run.bat --look 0x…` (just looking)
+- **Windows (PowerShell):** `.\run.ps1 --dry-run` or `.\run.ps1 --look 0x…`
+- **Mac / Linux:** `./run.sh --dry-run` or `./run.sh --look 0x…`
 
 ---
 
@@ -156,6 +163,7 @@ Blockchain transactions can't be undone. Always read the summary before confirmi
 | :--- | :--- | :--- | :--- |
 | Start the tool | double-click `run.bat`, or `run.bat` | `.\run.ps1` | `./run.sh` |
 | Practice mode (sends nothing) | `run.bat --dry-run` | `.\run.ps1 --dry-run` | `./run.sh --dry-run` |
+| Just look around (no key, practice only) | `run.bat --look 0x…` | `.\run.ps1 --look 0x…` | `./run.sh --look 0x…` |
 | Change your settings | `run.bat --setup` | `.\run.ps1 --setup` | `./run.sh --setup` |
 | Start over (remove saved key and settings) | `run.bat --reset` | `.\run.ps1 --reset` | `./run.sh --reset` |
 | Check on a bridge | `run.bat --track 0x…` | `.\run.ps1 --track 0x…` | `./run.sh --track 0x…` |
@@ -269,6 +277,7 @@ This tool is free. If it saved you time or money, tips are appreciated:
 --setup              Run the setup wizard again
 --reset              Remove saved settings and the saved key
 --track <tx hash>    Check on a bridge deposit sent earlier
+--look <address>     Just look around: any wallet, practice only, no key
 ```
 
 Advanced settings (such as `RPC_URL` for a private RPC provider) are in [`.env.example`](./.env.example).

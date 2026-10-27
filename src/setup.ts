@@ -66,7 +66,8 @@ function section(n: number, title: string) {
 }
 
 /** Friendly first-run setup. Writes .env (readable only by the current user). */
-export async function runSetupWizard(): Promise<void> {
+/** Returns `look: true` when the user chose to just look around (no key). */
+export async function runSetupWizard(): Promise<{ look: boolean }> {
   console.log(
     '\n' +
       box(
@@ -90,7 +91,7 @@ export async function runSetupWizard(): Promise<void> {
       default: false,
       theme: promptTheme,
     });
-    if (!overwrite) return;
+    if (!overwrite) return { look: false };
     // Back up the old settings, but never a plain-text private key (older versions could save one there).
     const old = fs.readFileSync(envPath(), 'utf-8').replace(/^\s*PRIVATE_KEY\s*=.*$/gm, 'PRIVATE_KEY=');
     fs.writeFileSync(envPath() + '.bak', old, { encoding: 'utf-8', mode: 0o600 });
@@ -113,6 +114,11 @@ export async function runSetupWizard(): Promise<void> {
         value: 'ask',
         description: 'Nothing is saved at all. You paste the key (it stays hidden) each time.',
       },
+      {
+        name: 'Just look around first (no key needed)',
+        value: 'look',
+        description: 'Explore any wallet in practice mode. Nothing can be sent. Add your key later with --setup.',
+      },
     ],
   });
 
@@ -126,7 +132,7 @@ export async function runSetupWizard(): Promise<void> {
         break;
       }
     }
-  } else if (keystoreExists()) {
+  } else if (keyMode === 'ask' && keystoreExists()) {
     const remove = await confirm({
       message: 'You have a password-locked key saved. Delete it so nothing is stored?',
       default: true,
@@ -154,16 +160,19 @@ export async function runSetupWizard(): Promise<void> {
   );
   const blockscoutKey = await askBlockscoutKey();
 
-  // 3. Default destination
-  section(3, 'Your usual destination (optional)');
-  console.log(c.dim('  If you usually send or bridge to the same wallet (or an exchange), save it here so you do not have to paste it each time.'));
-  const destination = (
-    await input({
-      message: 'Wallet address (or press Enter to skip):',
-      theme: promptTheme,
-      validate: (v) => (v.trim() === '' || isAddress(v.trim()) ? true : 'That is not a wallet address (0x + 40 characters)'),
-    })
-  ).trim();
+  // 3. Default destination (not needed just to look around)
+  let destination = '';
+  if (keyMode !== 'look') {
+    section(3, 'Your usual destination (optional)');
+    console.log(c.dim('  If you usually send or bridge to the same wallet (or an exchange), save it here so you do not have to paste it each time.'));
+    destination = (
+      await input({
+        message: 'Wallet address (or press Enter to skip):',
+        theme: promptTheme,
+        validate: (v) => (v.trim() === '' || isAddress(v.trim()) ? true : 'That is not a wallet address (0x + 40 characters)'),
+      })
+    ).trim();
+  }
 
   const lines = [
     '# Created by the setup wizard. Run `npm run setup` to change these.',
@@ -187,12 +196,15 @@ export async function runSetupWizard(): Promise<void> {
       box(
         [
           c.brand.bold(`${sym.ok} Settings saved`),
-          keyMode === 'ask'
-            ? c.dim('Your private key was not saved. You will paste it each time.')
-            : c.dim('Your key is locked with your password. Next time, just type the password.'),
+          keyMode === 'look'
+            ? c.dim('No key was given. You can look around safely; nothing can be sent.')
+            : keyMode === 'ask'
+              ? c.dim('Your private key was not saved. You will paste it each time.')
+              : c.dim('Your key is locked with your password. Next time, just type the password.'),
           c.dim('Change these any time with "npm run setup".'),
         ],
         { title: `${emoji('✨')}You're ready` }
       )
   );
+  return { look: keyMode === 'look' };
 }

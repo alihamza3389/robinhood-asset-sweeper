@@ -100,8 +100,23 @@ async function pasteInstead(note?: string): Promise<`0x${string}`> {
  * Returns the private key: from the encrypted keystore (asking its password), or by asking
  * the user to paste it (then offering to save it encrypted).
  */
-export async function obtainPrivateKey(savedInvalid = false): Promise<`0x${string}`> {
+export async function obtainPrivateKey(savedInvalid = false): Promise<`0x${string}` | 'LOOK'> {
   if (!keystoreExists()) {
+    if (!savedInvalid) {
+      const how = await select({
+        message: 'How would you like to start?',
+        theme: promptTheme,
+        choices: [
+          { name: 'Unlock my wallet (paste my private key)', value: 'paste' },
+          {
+            name: 'Just look around (no key, practice only)',
+            value: 'look',
+            description: 'Explore any wallet address safely. Nothing can be sent without a key.',
+          },
+        ],
+      });
+      if (how === 'look') return 'LOOK';
+    }
     return pasteInstead(savedInvalid ? 'The key saved in .env is not valid, so please paste it instead.' : undefined);
   }
 

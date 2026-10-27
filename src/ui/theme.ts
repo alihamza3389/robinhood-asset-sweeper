@@ -92,19 +92,25 @@ export function banner(dryRun = false): void {
     c.dim('Send, sell, bridge or clean up your wallet'),
   ];
   console.log('\n' + box(lines));
-  if (dryRun) {
-    console.log(
-      '\n' +
-        box(
-          [
-            c.warn.bold(`${emoji('🧪')}PRACTICE MODE`),
-            'Everything is simulated. Nothing will be signed or sent,',
-            'so you can safely explore every step.',
-          ],
-          { color: c.warn }
-        )
-    );
-  }
+  if (dryRun) printPractice();
+}
+
+/** The practice-mode notice: shown at start with --dry-run, when it is switched on, and when just looking. */
+export function printPractice(lookingAt?: string): void {
+  const lines = lookingAt
+    ? [
+        c.warn.bold(`${emoji('👀')}JUST LOOKING (PRACTICE MODE)`),
+        `Looking at ${c.addr(lookingAt)}`,
+        'No key was given, so nothing can be signed or sent. Everything',
+        'else is real: the scan, the prices, the quotes and the checks.',
+        c.dim('To use your own wallet for real, run the setup again (--setup).'),
+      ]
+    : [
+        c.warn.bold(`${emoji('🧪')}PRACTICE MODE`),
+        'Everything is simulated. Nothing will be signed or sent,',
+        'so you can safely explore every step.',
+      ];
+  console.log('\n' + box(lines, { color: c.warn }));
 }
 
 /** Step header: a coloured badge plus a title, and an optional plain-English hint below. */

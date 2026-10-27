@@ -12,8 +12,11 @@ import { usdToWei } from '../bridge/across.js';
  * Step 1. Five plain choices; "Sell tokens for ETH" then asks what happens to the ETH, so the menu
  * stays short while every sell mode is still one question away.
  */
-export async function promptMode(bridge: boolean): Promise<OperationMode | 'QUIT'> {
-  const choice = await select<OperationMode | 'QUIT'>({
+export async function promptMode(
+  bridge: boolean,
+  practice: { on: boolean; locked: boolean }
+): Promise<OperationMode | 'PRACTICE' | 'QUIT'> {
+  const choice = await select<OperationMode | 'PRACTICE' | 'QUIT'>({
     message: 'What would you like to do?',
     theme: promptTheme,
     choices: [
@@ -41,7 +44,20 @@ export async function promptMode(bridge: boolean): Promise<OperationMode | 'QUIT
         value: 'BURN',
         description: 'Send junk or scam tokens to a burn address so they stop cluttering your wallet. Permanent.',
       },
-      { name: `${emoji('👋')}Exit`, value: 'QUIT', description: 'Close the tool without doing anything.' },
+      practice.locked
+        ? {
+            name: `${emoji('🧪')}Practice mode: always ON`,
+            value: 'PRACTICE' as const,
+            disabled: '(just looking, no key)',
+          }
+        : {
+            name: `${emoji('🧪')}Practice mode: ${practice.on ? c.warn.bold('ON') : 'OFF'}`,
+            value: 'PRACTICE' as const,
+            description: practice.on
+              ? 'Turn practice OFF to sign and send for real.'
+              : 'Turn practice ON to try anything safely: everything is simulated, nothing is sent.',
+          },
+      { name: `${emoji('👋')}Exit`, value: 'QUIT', description: 'Close the tool.' },
     ],
   });
   if (choice !== 'SELL') return choice;
@@ -56,6 +72,29 @@ export async function promptMode(bridge: boolean): Promise<OperationMode | 'QUIT
         : []),
     ],
   });
+}
+
+/** "Just looking": the wallet to explore in practice mode, without a key. */
+export async function promptLookAddress(): Promise<Address> {
+  console.log(
+    '\n' +
+      box(
+        [
+          'Paste any Robinhood Chain wallet address: your own, or one you',
+          'saw on an explorer or on X. You will see its real tokens, prices,',
+          'sell routes and bridge quotes, in practice mode.',
+          '',
+          `${sym.ok} No private key needed, so nothing can ever be sent`,
+        ],
+        { title: `${emoji('👀')}Just looking`, color: c.dim }
+      )
+  );
+  const value = await input({
+    message: 'Wallet address to look at:',
+    theme: promptTheme,
+    validate: (v) => (isAddress(v.trim()) ? true : 'That is not a wallet address (0x + 40 characters)'),
+  });
+  return getAddress(value.trim());
 }
 
 /** Which way to bridge. */

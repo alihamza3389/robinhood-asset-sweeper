@@ -168,7 +168,13 @@ export function printSummary(results: ActionResult[], config: Config, ethUsd?: n
     lines.push('', 'When a step fails, the tokens stay in your wallet (only a', 'tiny network fee may be used). You can run the tool again.');
   }
   if (config.dryRun) {
-    lines.push('', c.warn('This was practice. Nothing was sent.'), 'Start the tool again without --dry-run to do it for real.');
+    lines.push(
+      '',
+      c.warn('This was practice. Nothing was sent.'),
+      config.lookAt
+        ? 'To do it for real with your own wallet, run the setup (--setup).'
+        : 'To do it for real, turn Practice mode OFF in the menu.'
+    );
   }
   const title = config.dryRun
     ? `${emoji('🧪')}Practice run finished`

@@ -3,7 +3,9 @@ import { parseArgs } from 'node:util';
 import { Address, isAddress, getAddress } from 'viem';
 import { Config } from './types.js';
 import { DEFAULTS, VERSION } from './constants.js';
+import { generatePrivateKey } from 'viem/accounts';
 import { isValidPrivateKey, obtainPrivateKey, withPrefix } from './unlock.js';
+import { promptLookAddress } from './ui/prompts.js';
 
 export { isValidPrivateKey };
 
@@ -18,6 +20,7 @@ Options:
   --dry-run            Scan and simulate everything, but never sign or send a transaction
   --slippage <pct>     Max slippage for sells, as a percent (default ${DEFAULTS.slippagePercent})
   --max-impact <pct>   Skip a sale if its quote is this much below the market price (default ${DEFAULTS.maxPriceImpactPercent})
+  --look <address>     Just look around: explore any wallet in practice mode, no key needed
   --track <tx hash>    Check on a bridge deposit you sent earlier
   --setup              Run the setup wizard again
   --reset              Remove saved settings and your saved (password-locked) key
@@ -45,6 +48,8 @@ export interface CliOptions {
   maxPriceImpactPercent: number;
   /** A bridge deposit to check on (--track). */
   track?: `0x${string}`;
+  /** Just looking at this wallet, without a key (--look). */
+  look?: Address;
 }
 
 export function parseCli(argv = process.argv.slice(2)): CliOptions {
@@ -55,6 +60,7 @@ export function parseCli(argv = process.argv.slice(2)): CliOptions {
       slippage: { type: 'string' },
       'max-impact': { type: 'string' },
       track: { type: 'string' },
+      look: { type: 'string' },
       setup: { type: 'boolean', default: false },
       reset: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
@@ -64,8 +70,12 @@ export function parseCli(argv = process.argv.slice(2)): CliOptions {
   if (values.track !== undefined && !/^0x[0-9a-fA-F]{64}$/.test(values.track.trim())) {
     throw new Error(`--track needs a transaction hash (0x followed by 64 characters), got "${values.track}"`);
   }
+  if (values.look !== undefined && !isAddress(values.look.trim())) {
+    throw new Error(`--look needs a wallet address (0x followed by 40 characters), got "${values.look}"`);
+  }
   return {
     track: values.track?.trim() as `0x${string}` | undefined,
+    look: values.look ? getAddress(values.look.trim()) : undefined,
     help: values.help ?? false,
     setup: values.setup ?? false,
     reset: values.reset ?? false,
@@ -87,12 +97,20 @@ function envStr(name: string): string | undefined {
 }
 
 /** Reads .env (without overriding real environment variables) and gets the private key. */
-export async function loadConfig(cli: CliOptions): Promise<Config> {
+export async function loadConfig(cli: CliOptions, opts: { look?: boolean } = {}): Promise<Config> {
   dotenv.config({ quiet: true });
 
   // A plain key in .env (advanced) wins; otherwise the encrypted keystore, otherwise ask.
   const envKey = envStr('PRIVATE_KEY');
-  const privateKey = envKey && isValidPrivateKey(withPrefix(envKey)) ? withPrefix(envKey) : await obtainPrivateKey(!!envKey);
+  // Just looking (--look, or chosen in the wizard or at the key prompt): no key at all.
+  let lookAt = cli.look;
+  let privateKey: `0x${string}` | 'LOOK' | undefined;
+  if (!lookAt && !opts.look) {
+    privateKey = envKey && isValidPrivateKey(withPrefix(envKey)) ? (withPrefix(envKey) as `0x${string}`) : await obtainPrivateKey(!!envKey);
+  }
+  if (!lookAt && (opts.look || privateKey === 'LOOK')) lookAt = await promptLookAddress();
+  // A throwaway stands in for the key so the clients can be built; with lookAt set it never signs.
+  if (lookAt) privateKey = generatePrivateKey();
 
   const destEnv = envStr('DESTINATION_ADDRESS');
   const chainId = envInt('CHAIN_ID', DEFAULTS.chainId);
@@ -100,6 +118,7 @@ export async function loadConfig(cli: CliOptions): Promise<Config> {
 
   return {
     privateKey: privateKey as `0x${string}`,
+    lookAt,
     defaultDestination: destEnv && isAddress(destEnv) ? (getAddress(destEnv) as Address) : undefined,
     rpcUrl: envStr('RPC_URL') ?? DEFAULTS.rpcUrl,
     chainId,
@@ -110,6 +129,6 @@ export async function loadConfig(cli: CliOptions): Promise<Config> {
     blockscoutApiKey: envStr('BLOCKSCOUT_API_KEY') ?? '',
     slippagePercent: cli.slippagePercent,
     maxPriceImpactPercent: cli.maxPriceImpactPercent,
-    dryRun: cli.dryRun,
+    dryRun: cli.dryRun || lookAt !== undefined,
   };
 }
