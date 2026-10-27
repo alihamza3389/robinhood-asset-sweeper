@@ -9,6 +9,7 @@ export { isValidPrivateKey };
 
 export const HELP = `
 Robinhood Chain Asset Sweeper ${VERSION}
+Send, sell, bridge (Robinhood Chain <-> Ethereum) or clean up your wallet.
 
 Start it with run.bat (Windows), ./run.sh (Mac/Linux) or npm start.
 Add options after --, for example: npm start -- --dry-run

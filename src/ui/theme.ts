@@ -89,7 +89,7 @@ export function box(lines: string[], opts: { title?: string; color?: (s: string)
 export function banner(dryRun = false): void {
   const lines = [
     `${c.brandBold(`${emoji('🧹')}Robinhood Chain Asset Sweeper`)} ${c.dim(VERSION)}`,
-    c.dim('Send, sell or clean up the tokens in your wallet'),
+    c.dim('Send, sell, bridge or clean up your wallet'),
   ];
   console.log('\n' + box(lines));
   if (dryRun) {

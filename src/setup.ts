@@ -77,7 +77,8 @@ export async function runSetupWizard(): Promise<void> {
           `${sym.ok} Your private key is never sent anywhere.`,
           `${sym.ok} You will see a full summary before anything is sent.`,
           '',
-          c.dim('Tip: start with "npm run dry-run" to practice without sending anything.'),
+          c.dim('Tip: try practice mode first (add --dry-run, e.g. run.bat --dry-run'),
+          c.dim('or ./run.sh --dry-run). It goes through everything but sends nothing.'),
         ],
         { title: `${emoji('👋')}First-time setup` }
       )
@@ -155,7 +156,7 @@ export async function runSetupWizard(): Promise<void> {
 
   // 3. Default destination
   section(3, 'Your usual destination (optional)');
-  console.log(c.dim('  If you usually send to the same wallet, save it here so you do not have to paste it each time.'));
+  console.log(c.dim('  If you usually send or bridge to the same wallet (or an exchange), save it here so you do not have to paste it each time.'));
   const destination = (
     await input({
       message: 'Wallet address (or press Enter to skip):',
