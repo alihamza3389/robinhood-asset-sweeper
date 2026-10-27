@@ -5,11 +5,11 @@ import { HELP, loadConfig, parseCli } from './config.js';
 import { askBlockscoutKey, envExists, runSetupWizard } from './setup.js';
 import { runReset } from './reset.js';
 import { checkForUpdate, RESTART_EXIT_CODE } from './update.js';
-import { createClients, createEthereumClients } from './chain.js';
+import { Clients, createClients, createEthereumClients } from './chain.js';
 import { chooseBridgeDestination, executeBridge, quoteAndConfirm, runBridgeMode, runTrack } from './bridgeFlow.js';
 import { fetchLimits } from './bridge/across.js';
 import { BRIDGE_ROUTES, CONTRACTS, DEAD_ADDRESS, DEFAULTS, FALLBACK_STOCK_TOKENS } from './constants.js';
-import { Asset, ActionResult, OperationMode, TokenAsset, hasFinalEthStep, sellsTokens } from './types.js';
+import { Asset, ActionResult, Config, OperationMode, TokenAsset, hasFinalEthStep, sellsTokens } from './types.js';
 import { loadCustomTokens, saveCustomToken } from './scan/customTokens.js';
 import { fetchRobinhoodStocks } from './scan/registry.js';
 import { fetchPrices, PriceBook } from './scan/prices.js';
@@ -124,18 +124,39 @@ async function main() {
     throw new Error(`The RPC at ${config.rpcUrl} is on chain ${rpcChainId}, not ${config.chainId}. Stopping to keep your funds safe.`);
   }
 
-  // Step 1: what to do, and where to
-  step(1, STEPS, 'Choose what to do', 'Use the arrow keys, then press Enter.');
-  const canBridge = config.chainId === DEFAULTS.chainId;
-  const choice = await promptMode(canBridge);
-  if (choice === 'QUIT') {
-    console.log(c.dim('\nBye! Nothing was changed.'));
-    return;
+  const session: Session = { config, publicClient, walletClient, sender, canBridge: config.chainId === DEFAULTS.chainId };
+  // Back to the menu after every action, finished or cancelled, so answering "No" never closes the
+  // tool (and the key is not asked for again). Only Exit or Ctrl+C closes it.
+  for (let first = true; ; first = false) {
+    if (!first) console.log(c.dim(`\n${'─'.repeat(48)}\nBack to the menu. Choose Exit when you are done.`));
+    step(1, STEPS, 'Choose what to do', 'Use the arrow keys, then press Enter.');
+    const choice = await promptMode(session.canBridge);
+    if (choice === 'QUIT') break;
+    try {
+      await runAction(choice, session);
+    } catch (err) {
+      if (err instanceof Error && err.name === 'ExitPromptError') throw err;
+      console.error('\n' + box([describeError(err)], { title: `${sym.fail} Something went wrong`, color: c.danger }));
+      console.error(c.dim('Nothing more was sent for this step. You can try again from the menu.'));
+    }
   }
-  const mode: OperationMode = choice;
+  console.log(c.dim('\nBye!'));
+  printDonations();
+}
+
+interface Session {
+  config: Config;
+  publicClient: Clients['publicClient'];
+  walletClient: Clients['walletClient'];
+  sender: Address;
+  canBridge: boolean;
+}
+
+/** One action from the menu. Returning (done, cancelled or nothing to do) goes back to the menu. */
+async function runAction(mode: OperationMode, session: Session) {
+  const { config, publicClient, walletClient, sender } = session;
   if (mode === 'BRIDGE') {
     await runBridgeMode({ config, robinhood: { publicClient, walletClient, owner: sender, dryRun: config.dryRun } });
-    printDonations();
     return;
   }
   let destination: Address | undefined;
@@ -260,7 +281,7 @@ async function main() {
             'Send a little ETH (a dollar or two is plenty) to:',
             c.addr.bold(sender),
             'then start the tool again.',
-            ...(canBridge
+            ...(session.canBridge
               ? ['', c.dim('Have ETH on Ethereum? Choose "Bridge ETH", then'), c.dim(`"Ethereum ${sym.arrow} Robinhood Chain" to bring some over.`)]
               : []),
           ],
@@ -376,7 +397,6 @@ async function main() {
   }
 
   printSummary(results, config, prices.ethUsd);
-  printDonations();
 }
 
 // If the output is closed early (e.g. piped into `head`), just stop quietly.

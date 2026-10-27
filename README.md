@@ -118,6 +118,8 @@ Use the **arrow keys** to move, **Space** to tick or untick a token, and **Enter
 4. **Review.** A summary box shows exactly what will happen, plus a chart link for each token. **Nothing is sent before you confirm.**
 5. **Go.** You'll see each step finish, with a link to view it on the explorer.
 
+When it's done, or if you answer **No** anywhere, you're taken **back to the menu** (no need to unlock again). Choose **Exit** to close the tool.
+
 ---
 
 ## Try it with no risk first
