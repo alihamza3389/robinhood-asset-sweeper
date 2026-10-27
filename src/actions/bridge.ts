@@ -2,6 +2,8 @@ import { Address, Hex, PublicClient as ViemPublicClient, TransactionSerialized }
 import { ACROSS, DEFAULTS } from '../constants.js';
 import { ActionResult, NativeAsset } from '../types.js';
 import { ActionContext, describeError, waitForSuccess } from './context.js';
+import { maxSendable } from './transfer.js';
+import { formatEthShort } from '../ui/format.js';
 import {
   BridgeError,
   Competitor,
@@ -35,14 +37,10 @@ export interface BridgeQuote {
   /** Across must deliver at least this on Ethereum. */
   guaranteed: bigint;
   expected: bigint;
-  feeUsd: number;
   gasUsd: number;
   fillSeconds: number;
   limits?: Limits;
   competitors: Competitor[];
-  /** ETH kept back for the network fee. */
-  reserve: bigint;
-  balance: bigint;
   planned: PlannedTx;
   quotedAt: number;
   expiresAt: number;
@@ -61,30 +59,33 @@ export function bridgeFee(baseFeePerGas: bigint): { maxFee: bigint; reserve: big
  */
 export async function prepareBridge(ctx: ActionContext, amountArg: BridgeAmount, recipient: Address): Promise<BridgeQuote> {
   const { publicClient, owner } = ctx;
-  // The RPC must really be Robinhood Chain: anywhere else the Across contract does not exist.
-  const chainId = await publicClient.getChainId();
-  if (chainId !== DEFAULTS.chainId) throw new BridgeError(`The RPC is on chain ${chainId}, not Robinhood Chain. Stopping to keep your funds safe.`);
-
   ctx.onStatus?.('Checking your balance…');
-  const [balance, block] = await Promise.all([publicClient.getBalance({ address: owner }), publicClient.getBlock()]);
+  const [chainId, balance, block] = await Promise.all([
+    publicClient.getChainId(),
+    publicClient.getBalance({ address: owner }),
+    publicClient.getBlock(),
+  ]);
+  // The RPC must really be Robinhood Chain: anywhere else the Across contract does not exist.
+  if (chainId !== DEFAULTS.chainId) throw new BridgeError(`The RPC is on chain ${chainId}, not Robinhood Chain. Stopping to keep your funds safe.`);
   const { maxFee, reserve } = bridgeFee(block.baseFeePerGas ?? 0n);
-  const amount = amountArg.kind === 'max' ? balance - reserve : amountArg.wei;
+  const amount = amountArg.kind === 'max' ? maxSendable(balance, ACROSS.MAX_GAS, maxFee) : amountArg.wei;
   if (amount <= 0n) throw new BridgeError('There is not enough ETH to bridge after keeping back the network fee.');
   if (amount + reserve > balance) throw new BridgeError('Not enough ETH for this amount plus the network fee.');
 
   ctx.onStatus?.('Getting quotes from Across and other bridges…');
-  let quotedAt = 0;
-  const [limits, quoted, competitors] = await Promise.all([
+  const [limits, across, competitors] = await Promise.all([
     fetchLimits(),
+    // Timed when the quote itself arrives, not when the slower comparison quotes do.
     fetchAcrossQuote(amount, owner, recipient).then(
-      (q) => ((quotedAt = Date.now()), q),
+      (quote) => ({ quote, at: Date.now() }),
       (e: Error) => e // reported after the limit checks, which explain the usual cause more clearly
     ),
     fetchCompetitors(amount, owner),
   ]);
   if (limits && amount < limits.min) throw new BridgeError(`That is below the Across minimum (${formatEthShort(limits.min, 'up')} ETH).`);
   if (limits && amount > limits.max) throw new BridgeError(`That is above the Across maximum right now (${formatEthShort(limits.max)} ETH).`);
-  if (quoted instanceof Error) throw new BridgeError(`Across could not quote this right now (${quoted.message.slice(0, 120)}).`);
+  if (across instanceof Error) throw new BridgeError(`Across could not quote this right now (${across.message.slice(0, 120)}).`);
+  const { quote: quoted, at: quotedAt } = across;
   const { guaranteed, gasLimit } = verifyQuote(quoted, amount, owner, recipient);
 
   ctx.onStatus?.('Testing the deposit against the live chain…');
@@ -99,13 +100,10 @@ export async function prepareBridge(ctx: ActionContext, amountArg: BridgeAmount,
     recipient,
     guaranteed,
     expected: BigInt(quoted.expectedOutputAmount),
-    feeUsd: Number(quoted.fees.total.amountUsd),
     gasUsd: Number(quoted.fees.originGas.amountUsd),
     fillSeconds: quoted.expectedFillTime,
     limits,
     competitors,
-    reserve,
-    balance,
     planned: { to: quoted.swapTx.to, data: quoted.swapTx.data, value: amount, gasLimit, maxFee },
     quotedAt,
     expiresAt: quoted.quoteExpiryTimestamp * 1000,
@@ -170,7 +168,7 @@ export async function trackDeposit(
   hash: Hex,
   onStatus: (text: string) => void,
   timeoutMs = 15 * 60_000,
-  pollMs = 10_000,
+  pollMs = 4_000,
   status: (h: Hex) => Promise<DepositStatus> = fetchDepositStatus
 ): Promise<TrackResult> {
   const start = Date.now();
@@ -211,12 +209,4 @@ export async function checkEthereumRecipient(l1: Pick<ViemPublicClient, 'getCode
   if (code && code !== '0x' && !code.startsWith('0xef0100')) {
     throw new BridgeError('That address is a smart contract on Ethereum, so it would receive WETH, not ETH. Use a normal wallet address.');
   }
-}
-
-/** ETH with 5 decimals, rounded down (or up, for minimums) so "at least X" never overstates. */
-export function formatEthShort(wei: bigint, round: 'down' | 'up' = 'down'): string {
-  const unit = 10n ** 13n;
-  const units = round === 'up' ? (wei + unit - 1n) / unit : wei / unit;
-  const s = units.toString().padStart(6, '0');
-  return `${s.slice(0, -5)}.${s.slice(-5)}`;
 }

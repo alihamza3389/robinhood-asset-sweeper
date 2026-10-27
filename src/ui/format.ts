@@ -29,3 +29,24 @@ export function usdValue(asset: Asset, amount: bigint = asset.balance): number |
   if (asset.priceUsd === undefined) return undefined;
   return Number(formatUnits(amount, asset.decimals)) * asset.priceUsd;
 }
+
+/** ETH with 5 decimals, rounded down (or up, for minimums) so "at least X" never overstates. */
+export function formatEthShort(wei: bigint, round: 'down' | 'up' = 'down'): string {
+  const unit = 10n ** 13n;
+  const units = round === 'up' ? (wei + unit - 1n) / unit : wei / unit;
+  const s = units.toString().padStart(6, '0');
+  return `${s.slice(0, -5)}.${s.slice(-5)}`;
+}
+
+/** Splits a message into lines of at most `max` characters, so it fits in a box on narrow terminals. */
+export function wrap(text: string, max = 64): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/)) {
+    if (line && line.length + 1 + word.length > max) {
+      lines.push(line);
+      line = word;
+    } else line = line ? `${line} ${word}` : word;
+  }
+  return line ? [...lines, line] : lines;
+}

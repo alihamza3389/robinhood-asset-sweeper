@@ -1,7 +1,7 @@
 import ora from 'ora';
 import { Address, formatUnits } from 'viem';
 import { DEAD_ADDRESS, DONATIONS, GMGN_REFERRAL_URL, RH_WALLETS_URL, gmgnTokenUrl } from '../constants.js';
-import { Asset, ActionResult, Config, NativeAsset, OperationMode, PlanItem } from '../types.js';
+import { Asset, ActionResult, Config, NativeAsset, OperationMode, PlanItem, hasFinalEthStep, sellsTokens } from '../types.js';
 import { formatAmount, formatUsd, usdValue } from './format.js';
 import { box, c, emoji, padEnd, padStart, sym, width } from './theme.js';
 import { tokenTable } from './table.js';
@@ -47,8 +47,8 @@ function actionWord(mode: OperationMode, asset: Asset): string {
 }
 
 function txCount(mode: OperationMode, plan: PlanItem[]): string {
-  if (mode === 'SELL' || mode === 'SELL_AND_SWEEP' || mode === 'SELL_AND_BRIDGE') {
-    const extra = mode === 'SELL' ? 0 : 1;
+  if (sellsTokens(mode)) {
+    const extra = hasFinalEthStep(mode) ? 1 : 0;
     return `${plan.length + extra} to ${plan.length * 2 + extra}`;
   }
   return String(plan.length);
@@ -109,7 +109,7 @@ export function printReview(mode: OperationMode, plan: PlanItem[], destination: 
   lines.push('');
   lines.push(`${c.dim('Worth')}     ${c.money.bold(`about ${formatUsd(total)}`)} ${c.dim('(prices are estimates)')}`);
   lines.push(`${c.dim('Txs')}       ${txCount(mode, plan)} ${c.dim('(each costs a tiny ETH network fee)')}`);
-  if (mode === 'SELL' || mode === 'SELL_AND_SWEEP' || mode === 'SELL_AND_BRIDGE') {
+  if (sellsTokens(mode)) {
     lines.push('');
     lines.push(c.brand(`${sym.ok} A sale is cancelled if the price moves more than ${config.slippagePercent}% while sending`));
     lines.push(c.brand(`${sym.ok} A sale is skipped if its price is ${config.maxPriceImpactPercent}%+ below the market`));

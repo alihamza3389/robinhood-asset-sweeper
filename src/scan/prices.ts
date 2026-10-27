@@ -1,6 +1,7 @@
 import { API, BUCKET_POOL_ID, CONTRACTS } from '../constants.js';
 import { PublicClient, stateViewAbi } from '../chain.js';
 import { blockscoutGet } from './blockscout.js';
+import { getJson } from '../http.js';
 
 export interface PriceBook {
   /** lowercase token address -> USD */
@@ -15,12 +16,6 @@ export function ethPerBucketFromSqrtPrice(sqrtPriceX96: bigint): number | undefi
   return bucketPerEth > 0 && Number.isFinite(bucketPerEth) ? 1 / bucketPerEth : undefined;
 }
 
-async function getJson(url: string, timeoutMs: number): Promise<unknown> {
-  const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(timeoutMs) });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
-
 /** Best-effort pricing. Every source is optional; missing prices display as "$--". */
 export async function fetchPrices(
   publicClient: PublicClient,
@@ -30,7 +25,7 @@ export async function fetchPrices(
   let ethUsd: number | undefined;
 
   const [bucketFeed, stats, slot0] = await Promise.allSettled([
-    getJson(API.bucketPrices, 5_000),
+    getJson(API.bucketPrices, { timeoutMs: 5_000 }),
     blockscoutGet(opts.chainId, opts.apiKey, '/stats'),
     publicClient.readContract({
       address: CONTRACTS.STATE_VIEW,

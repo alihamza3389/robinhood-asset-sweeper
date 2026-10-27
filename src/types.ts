@@ -2,6 +2,16 @@ import type { Address } from 'viem';
 
 export type OperationMode = 'TRANSFER' | 'SELL' | 'SELL_AND_SWEEP' | 'BRIDGE' | 'SELL_AND_BRIDGE' | 'BURN';
 
+/** Modes that sell tokens for ETH, and what happens to the ETH afterwards (nothing, sent on, or bridged). */
+export const SELL_MODES: Partial<Record<OperationMode, 'keep' | 'sweep' | 'bridge'>> = {
+  SELL: 'keep',
+  SELL_AND_SWEEP: 'sweep',
+  SELL_AND_BRIDGE: 'bridge',
+};
+export const sellsTokens = (mode: OperationMode) => SELL_MODES[mode] !== undefined;
+/** Sell modes that end with one more step for the ETH (send or bridge). */
+export const hasFinalEthStep = (mode: OperationMode) => SELL_MODES[mode] === 'sweep' || SELL_MODES[mode] === 'bridge';
+
 /** Which router, if any, can turn this token into ETH. */
 /** UNWRAP: WETH, turned into ETH 1:1 by unwrapping. */
 export type SellRoute = 'BUCKET' | 'USDG' | 'DIRECT' | 'UNIV3' | 'UNIV4' | 'UNWRAP' | 'NONE';

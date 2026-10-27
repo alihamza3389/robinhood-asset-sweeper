@@ -10,7 +10,9 @@ import {
   parseEther,
   parseTransaction,
   recoverTransactionAddress,
+  zeroAddress,
 } from 'viem';
+import { getJson } from '../http.js';
 import { ACROSS, DEFAULTS, UNISWAP_V3 } from '../constants.js';
 
 /**
@@ -27,7 +29,7 @@ const fail = (msg: string): never => {
   throw new BridgeError(msg);
 };
 
-const NATIVE: Address = '0x0000000000000000000000000000000000000000';
+const NATIVE = zeroAddress;
 const ORIGIN_CHAIN_ID = DEFAULTS.chainId;
 /** Comparison quotes are informational; never let them hold up the real one. */
 const COMPETITOR_TIMEOUT_MS = 8_000;
@@ -44,13 +46,6 @@ export interface AcrossQuote {
   fees: { total: { amountUsd: number | string }; originGas: { amountUsd: number | string } };
   // The API has returned gas both as a number and as a string.
   swapTx: { chainId: number; to: Address; data: Hex; value: string; gas: number | string; simulationSuccess: boolean };
-}
-
-async function getJson<T>(url: string, init?: RequestInit, timeoutMs = 30_000): Promise<T> {
-  const res = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
-  const body = await res.text();
-  if (!res.ok) throw new Error(`${res.status} ${body.slice(0, 200)}`);
-  return JSON.parse(body) as T;
 }
 
 export function fetchAcrossQuote(amount: bigint, from: Address, recipient: Address): Promise<AcrossQuote> {
@@ -86,8 +81,7 @@ export async function fetchLimits(): Promise<Limits | undefined> {
   try {
     const l = await getJson<{ minDeposit: string; maxDeposit: string; maxDepositInstant: string }>(
       `${ACROSS.API}/limits?${q}`,
-      undefined,
-      COMPETITOR_TIMEOUT_MS
+      { timeoutMs: COMPETITOR_TIMEOUT_MS }
     );
     return { min: BigInt(l.minDeposit), max: BigInt(l.maxDeposit), maxInstant: BigInt(l.maxDepositInstant) };
   } catch {
@@ -106,6 +100,8 @@ export async function fetchCompetitors(amount: bigint, from: Address): Promise<C
   const relay = getJson<{ details: { currencyOut: { amount: string } } }>(
     'https://api.relay.link/quote',
     {
+      timeoutMs: COMPETITOR_TIMEOUT_MS,
+      init: {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -118,8 +114,8 @@ export async function fetchCompetitors(amount: bigint, from: Address): Promise<C
         amount: amount.toString(),
         tradeType: 'EXACT_INPUT',
       }),
-    },
-    COMPETITOR_TIMEOUT_MS
+      },
+    }
   ).then((d): Competitor => ({ name: 'Relay', out: BigInt(d.details.currencyOut.amount) }));
 
   // deBridge charges a flat fee on top of the amount; subtract it so every row is "ETH out for this ETH in".
@@ -137,8 +133,7 @@ export async function fetchCompetitors(amount: bigint, from: Address): Promise<C
   });
   const debridge = getJson<{ fixFee?: string; estimation: { dstChainTokenOut: { recommendedAmount: string } } }>(
     `https://dln.debridge.finance/v1.0/dln/order/create-tx?${debridgeQ}`,
-    undefined,
-    COMPETITOR_TIMEOUT_MS
+    { timeoutMs: COMPETITOR_TIMEOUT_MS }
   ).then((d): Competitor => ({
     name: 'deBridge',
     out: BigInt(d.estimation.dstChainTokenOut.recommendedAmount) - BigInt(d.fixFee ?? '0'),
@@ -148,8 +143,7 @@ export async function fetchCompetitors(amount: bigint, from: Address): Promise<C
   // Their network code for Robinhood Chain ETH is "ethhood".
   const changenow = getJson<{ estimatedAmount: number }>(
     `https://api.changenow.io/v1/exchange-amount/${formatEther(amount)}/ethhood_eth`,
-    undefined,
-    COMPETITOR_TIMEOUT_MS
+    { timeoutMs: COMPETITOR_TIMEOUT_MS }
   ).then((d): Competitor => ({ name: 'ChangeNOW (custodial)', out: parseEther(d.estimatedAmount.toFixed(18)) }));
 
   const settled = await Promise.allSettled([relay, debridge, changenow]);
@@ -218,10 +212,10 @@ export interface EthPrice {
  */
 export async function fetchEthUsd(timeoutMs = 8_000): Promise<EthPrice | undefined> {
   const [binance, gecko] = await Promise.allSettled([
-    getJson<{ bidPrice: string; askPrice: string }>('https://api.binance.com/api/v3/ticker/bookTicker?symbol=ETHUSDT', undefined, timeoutMs).then(
+    getJson<{ bidPrice: string; askPrice: string }>('https://api.binance.com/api/v3/ticker/bookTicker?symbol=ETHUSDT', { timeoutMs }).then(
       (d) => (Number(d.bidPrice) + Number(d.askPrice)) / 2
     ),
-    getJson<{ ethereum: { usd: number } }>('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd', undefined, timeoutMs).then(
+    getJson<{ ethereum: { usd: number } }>('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd', { timeoutMs }).then(
       (d) => d.ethereum.usd
     ),
   ]);

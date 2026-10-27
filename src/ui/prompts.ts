@@ -2,10 +2,10 @@ import { Address, getAddress, isAddress, parseUnits, zeroAddress } from 'viem';
 import { checkbox, confirm, input, select } from '@inquirer/prompts';
 import { Asset, OperationMode, PlanItem, TokenAsset } from '../types.js';
 import { DEAD_ADDRESS, gmgnTokenUrl } from '../constants.js';
-import { formatAmount, formatUsd, usdValue } from './format.js';
-import { box, c, checkboxTheme, emoji, promptTheme } from './theme.js';
+import { formatAmount, formatEthShort, formatUsd, usdValue } from './format.js';
+import { box, c, checkboxTheme, emoji, promptTheme, sym } from './theme.js';
 import { tokenTable } from './table.js';
-import { BridgeAmount, formatEthShort } from '../actions/bridge.js';
+import { BridgeAmount } from '../actions/bridge.js';
 import { usdToWei } from '../bridge/across.js';
 
 export async function promptMode(bridge: boolean): Promise<OperationMode | 'QUIT'> {
@@ -210,6 +210,18 @@ export async function confirmPlan(dryRun: boolean): Promise<boolean> {
 
 export const isTokenAsset = (a: Asset): a is TokenAsset => a.kind === 'erc20';
 
+/**
+ * Asks for the last 4 characters of an address the user typed or pasted. Guards against
+ * clipboard-hijacking malware that swaps a copied address for a lookalike.
+ */
+export async function confirmAddressTail(address: Address): Promise<boolean> {
+  console.log(`\n  ${c.dim('You entered')}  ${c.warn.bold(address)}`);
+  const tail = await input({ message: 'To confirm, type the LAST 4 characters of that address:', theme: promptTheme });
+  if (tail.trim().toLowerCase() === address.slice(-4).toLowerCase()) return true;
+  console.log(c.danger(`\n${sym.fail} Those don't match, so I stopped. Nothing was sent. Please start again.`));
+  return false;
+}
+
 /** Where bridged ETH should arrive on Ethereum. The same address is the default: the same key owns it there. */
 export async function promptBridgeDestination(sender: Address, saved?: Address): Promise<{ address: Address; typed: boolean }> {
   const usableSaved = saved && saved.toLowerCase() !== sender.toLowerCase() && validateDestination(saved, sender) === true ? saved : undefined;
@@ -265,8 +277,10 @@ export async function promptBridgeAmount(opts: {
     if (wei > available) return `You can bridge at most ${formatEthShort(available)} ETH (some is kept back for the fee)`;
     return true;
   };
+  // "$1,250 usd" -> "1250": the same cleaning for checking the input and for keeping it.
+  const clean = (v: string) => v.trim().replace(/,/g, '').replace(/^\$/, '').replace(/\s*(usd|eth)$/i, '');
   const toWei = (v: string): bigint | string => {
-    const s = v.trim().replace(/,/g, '').replace(/^\$/, '').replace(/\s*(usd|eth)$/i, '');
+    const s = clean(v);
     if (!/^\d*\.?\d+$/.test(s)) return 'Type a number, like ' + (unit === 'usd' ? '125' : '0.05');
     try {
       return unit === 'usd' ? usdToWei(s, price!.usd) : parseUnits(s, 18);
@@ -284,7 +298,7 @@ export async function promptBridgeAmount(opts: {
   });
   const wei = toWei(raw) as bigint;
   if (unit === 'eth') return { kind: 'eth', wei };
-  return { kind: 'usd', usd: raw.trim().replace(/,/g, '').replace(/^\$/, '').replace(/\s*usd$/i, ''), wei, usdPrice: price!.usd };
+  return { kind: 'usd', usd: clean(raw), wei, usdPrice: price!.usd };
 }
 
 /**

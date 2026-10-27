@@ -1,6 +1,5 @@
 import ora from 'ora';
 import { Address, Hex } from 'viem';
-import { input } from '@inquirer/prompts';
 import { DEFAULTS } from './constants.js';
 import { ActionResult, Config, NativeAsset } from './types.js';
 import { ActionContext } from './actions/context.js';
@@ -9,7 +8,6 @@ import {
   BridgeQuote,
   bridgeFee,
   checkEthereumRecipient,
-  formatEthShort,
   isStale,
   prepareBridge,
   sendBridge,
@@ -17,28 +15,17 @@ import {
 } from './actions/bridge.js';
 import { BridgeError, fetchEthUsd, fetchLimits } from './bridge/across.js';
 import { createEthereumClient } from './chain.js';
-import { formatUsd } from './ui/format.js';
-import { box, c, emoji, promptTheme, step, sym, tip } from './ui/theme.js';
-import { confirmBridge, promptBridgeAmount, promptBridgeDestination } from './ui/prompts.js';
+import { formatEthShort, formatUsd, wrap } from './ui/format.js';
+import { maxSendable } from './actions/transfer.js';
+import { ACROSS } from './constants.js';
+import { box, c, emoji, step, sym, tip } from './ui/theme.js';
+import { confirmAddressTail, confirmBridge, promptBridgeAmount, promptBridgeDestination } from './ui/prompts.js';
 import { printBridgeOutcome, printBridgeQuote } from './ui/bridgeScreens.js';
 import { printSummary, runStep } from './ui/screens.js';
 
 type EthereumClient = ReturnType<typeof createEthereumClient>;
 
 const STEPS = 5;
-
-/** Splits a message into lines of at most `max` characters, so it fits in a box on narrow terminals. */
-export function wrap(text: string, max = 64): string[] {
-  const lines: string[] = [];
-  let line = '';
-  for (const word of text.split(/\s+/)) {
-    if (line && line.length + 1 + word.length > max) {
-      lines.push(line);
-      line = word;
-    } else line = line ? `${line} ${word}` : word;
-  }
-  return line ? [...lines, line] : lines;
-}
 
 const refused = (err: unknown) => {
   const msg = err instanceof Error ? err.message : String(err);
@@ -49,15 +36,7 @@ const refused = (err: unknown) => {
 export async function chooseBridgeDestination(sender: Address, saved: Address | undefined, l1: EthereumClient): Promise<Address | undefined> {
   tip('Double-check the address. Crypto sent to the wrong address cannot be recovered.');
   const { address, typed } = await promptBridgeDestination(sender, saved);
-  if (typed) {
-    // Guards against clipboard-hijacking malware that swaps a pasted address for a lookalike.
-    console.log(`\n  ${c.dim('You entered')}  ${c.warn.bold(address)}`);
-    const tail = await input({ message: 'To confirm, type the LAST 4 characters of that address:', theme: promptTheme });
-    if (tail.trim().toLowerCase() !== address.slice(-4).toLowerCase()) {
-      console.log(c.danger(`\n${sym.fail} Those don't match, so I stopped. Nothing was sent. Please start again.`));
-      return undefined;
-    }
-  }
+  if (typed && !(await confirmAddressTail(address))) return undefined;
   const spinner = ora({ text: 'Checking the address on Ethereum…', discardStdin: false }).start();
   try {
     await checkEthereumRecipient(l1, address);
@@ -95,7 +74,7 @@ export async function quoteAndConfirm(opts: {
       refused(err);
       return undefined;
     }
-    printBridgeQuote({ q, amountArg, from: ctx.owner, ethUsd, dryRun: ctx.dryRun });
+    printBridgeQuote({ q, amountArg, from: ctx.owner, ethUsd });
     if (!ask) return q;
     const answer = await confirmBridge(ctx.dryRun);
     if (answer === 'no') {
@@ -118,7 +97,8 @@ export async function executeBridge(opts: {
   label: string;
 }): Promise<ActionResult> {
   const { ctx, native, q, l1, explorerUrl, ethUsd, label } = opts;
-  const before = ctx.dryRun ? undefined : await l1.getBalance({ address: q.recipient }).catch(() => undefined);
+  // Read alongside the send rather than before it, so it never delays the deposit.
+  const beforeP = ctx.dryRun ? Promise.resolve(undefined) : l1.getBalance({ address: q.recipient }).catch(() => undefined);
   const result = await runStep(
     { doing: `${label} Bridging ${formatEthShort(q.amount)} ETH to Ethereum…`, done: 'Bridged', would: 'Would bridge' },
     (onStatus) => sendBridge({ ...ctx, onStatus }, native, q),
@@ -129,6 +109,7 @@ export async function executeBridge(opts: {
     return result;
   }
 
+  const before = await beforeP;
   const spinner = ora({ text: 'Waiting for Across to deliver it on Ethereum (usually under a minute)…', discardStdin: false }).start();
   const tracked = await trackDeposit(result.txHash, (t) => (spinner.text = `Waiting for Across to deliver it on Ethereum · ${c.dim(t)}`));
   spinner.stop();
@@ -137,16 +118,19 @@ export async function executeBridge(opts: {
   for (let i = 0; tracked.status === 'filled' && before !== undefined && i < 6; i++) {
     after = await l1.getBalance({ address: q.recipient }).catch(() => undefined);
     if (after !== undefined && after >= before + q.guaranteed) break;
-    await new Promise((r) => setTimeout(r, 5_000));
+    await new Promise((r) => setTimeout(r, 3_000));
   }
   printBridgeOutcome({ result: tracked, depositHash: result.txHash, explorerUrl, recipient: q.recipient, before, after, ethUsd });
   return result;
 }
 
 /** "Bridge ETH to Ethereum": steps 2 to 5 for plain ETH (no token scan needed). */
-export async function runBridgeMode(opts: { config: Config; ctx: ActionContext; recipient: Address; l1: EthereumClient }) {
-  const { config, ctx, recipient, l1 } = opts;
+export async function runBridgeMode(opts: { config: Config; ctx: ActionContext }) {
+  const { config, ctx } = opts;
   const { publicClient, owner } = ctx;
+  const l1 = createEthereumClient(config.blockscoutApiKey);
+  const recipient = await chooseBridgeDestination(owner, config.defaultDestination, l1);
+  if (!recipient) return;
 
   step(2, STEPS, 'Checking your ETH');
   const spinner = ora({ text: 'Reading your balance and the bridge limits…', discardStdin: false }).start();
@@ -157,11 +141,11 @@ export async function runBridgeMode(opts: { config: Config; ctx: ActionContext; 
     fetchEthUsd(),
   ]);
   spinner.stop();
-  const available = balance - bridgeFee(block.baseFeePerGas ?? 0n).reserve;
+  const available = maxSendable(balance, ACROSS.MAX_GAS, bridgeFee(block.baseFeePerGas ?? 0n).maxFee);
   const usd = (wei: bigint) => (price ? c.dim(` (${formatUsd((Number(wei) / 1e18) * price.usd)})`) : '');
   const lines = [
     `${c.dim('ETH')}           ${formatEthShort(balance)} ETH${usd(balance)}`,
-    `${c.dim('Can bridge')}    up to ${formatEthShort(available > 0n ? available : 0n)} ETH ${c.dim('(a little is kept back for the fee)')}`,
+    `${c.dim('Can bridge')}    up to ${formatEthShort(available)} ETH ${c.dim('(a little is kept back for the fee)')}`,
   ];
   if (limits) lines.push(`${c.dim('Across limits')} min ${formatEthShort(limits.min, 'up')} ETH${usd(limits.min)}, max ${formatEthShort(limits.max)} ETH`);
   if (!price) lines.push(c.dim('The ETH price is unavailable right now, so amounts are in ETH only.'));

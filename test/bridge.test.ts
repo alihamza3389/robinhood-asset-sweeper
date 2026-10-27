@@ -4,7 +4,8 @@ import { Address, encodeFunctionData, getAddress, Hex, pad, parseEther, Transact
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { ACROSS, UNISWAP_V3 } from '../src/constants.js';
 import { AcrossQuote, BridgeError, PERIPHERY_ABI, PlannedTx, agreedPrice, signedMismatch, usdToWei, verifyQuote } from '../src/bridge/across.js';
-import { bridgeFee, checkEthereumRecipient, formatEthShort, isStale, trackDeposit, BridgeQuote } from '../src/actions/bridge.js';
+import { bridgeFee, checkEthereumRecipient, isStale, trackDeposit, BridgeQuote } from '../src/actions/bridge.js';
+import { formatEthShort } from '../src/ui/format.js';
 import { comparisonRows } from '../src/ui/bridgeScreens.js';
 import { parseCli } from '../src/config.js';
 

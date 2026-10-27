@@ -1,6 +1,6 @@
 import ora from 'ora';
 import { Address, getAddress, isAddress } from 'viem';
-import { confirm, input } from '@inquirer/prompts';
+import { confirm } from '@inquirer/prompts';
 import { HELP, loadConfig, parseCli } from './config.js';
 import { askBlockscoutKey, envExists, runSetupWizard } from './setup.js';
 import { runReset } from './reset.js';
@@ -8,9 +8,8 @@ import { checkForUpdate, RESTART_EXIT_CODE } from './update.js';
 import { createClients, createEthereumClient } from './chain.js';
 import { chooseBridgeDestination, executeBridge, quoteAndConfirm, runBridgeMode, runTrack } from './bridgeFlow.js';
 import { fetchLimits } from './bridge/across.js';
-import { formatEthShort } from './actions/bridge.js';
 import { CONTRACTS, DEAD_ADDRESS, DEFAULTS, FALLBACK_STOCK_TOKENS } from './constants.js';
-import { Asset, ActionResult, OperationMode, TokenAsset } from './types.js';
+import { Asset, ActionResult, OperationMode, TokenAsset, hasFinalEthStep, sellsTokens } from './types.js';
 import { loadCustomTokens, saveCustomToken } from './scan/customTokens.js';
 import { fetchRobinhoodStocks } from './scan/registry.js';
 import { fetchPrices, PriceBook } from './scan/prices.js';
@@ -19,10 +18,11 @@ import { BlockscoutKeyError } from './scan/blockscout.js';
 import { ActionContext, describeError } from './actions/context.js';
 import { sendNative, transferToken } from './actions/transfer.js';
 import { sellToken } from './actions/sell.js';
-import { formatAmount, usdValue } from './ui/format.js';
+import { formatAmount, formatEthShort, usdValue } from './ui/format.js';
 import { banner, box, c, emoji, promptTheme, step, sym, tip } from './ui/theme.js';
 import { printDonations, printReview, printSummary, printTokenList, printWalletCard, runStep } from './ui/screens.js';
 import {
+  confirmAddressTail,
   confirmBurn,
   confirmPlan,
   isTokenAsset,
@@ -58,12 +58,12 @@ function eligibleFor(mode: OperationMode, assets: Asset[]): { eligible: Asset[];
         return true;
       case 'BURN':
         return a.kind === 'erc20';
-      case 'BRIDGE':
-        return a.kind === 'native';
       case 'SELL':
       case 'SELL_AND_SWEEP':
       case 'SELL_AND_BRIDGE':
         return a.kind === 'erc20' && a.route !== 'NONE';
+      case 'BRIDGE':
+        return false; // has its own flow (runBridgeMode) and never gets here
     }
   };
   return { eligible: assets.filter(ok), excluded: assets.filter((a) => !ok(a) && a.kind === 'erc20') };
@@ -133,20 +133,17 @@ async function main() {
     return;
   }
   const mode: OperationMode = choice;
+  if (mode === 'BRIDGE') {
+    await runBridgeMode({ config, ctx: { publicClient, walletClient, owner: sender, dryRun: config.dryRun } });
+    printDonations();
+    return;
+  }
   let destination: Address | undefined;
   let l1: ReturnType<typeof createEthereumClient> | undefined;
   if (mode === 'TRANSFER' || mode === 'SELL_AND_SWEEP') {
     tip('Double-check the address. Crypto sent to the wrong address cannot be recovered.');
     destination = await promptDestination(sender, config.defaultDestination);
-    if (destination !== config.defaultDestination) {
-      // Guards against clipboard-hijacking malware that swaps a pasted address for a lookalike.
-      console.log(`\n  ${c.dim('You entered')}  ${c.warn.bold(destination)}`);
-      const tail = await input({ message: 'To confirm, type the LAST 4 characters of that address:', theme: promptTheme });
-      if (tail.trim().toLowerCase() !== destination.slice(-4).toLowerCase()) {
-        console.log(c.danger(`\n${sym.fail} Those don't match, so I stopped. Nothing was sent. Please start again.`));
-        return;
-      }
-    }
+    if (destination !== config.defaultDestination && !(await confirmAddressTail(destination))) return;
     const code = await publicClient.getCode({ address: destination });
     if (code && code !== '0x') {
       console.log(
@@ -162,21 +159,18 @@ async function main() {
       );
       if (!(await confirm({ message: 'Continue anyway?', default: false, theme: promptTheme }))) return;
     }
-  } else if (mode === 'BRIDGE' || mode === 'SELL_AND_BRIDGE') {
+  } else if (mode === 'SELL_AND_BRIDGE') {
     l1 = createEthereumClient(config.blockscoutApiKey);
     destination = await chooseBridgeDestination(sender, config.defaultDestination, l1);
     if (!destination) return;
-    if (mode === 'BRIDGE') {
-      await runBridgeMode({ config, ctx: { publicClient, walletClient, owner: sender, dryRun: config.dryRun }, recipient: destination, l1 });
-      printDonations();
-      return;
-    }
   } else if (mode === 'BURN') {
     destination = DEAD_ADDRESS;
   }
 
   // Step 2: scan. Blockscout lists the tokens, the chain confirms balances.
   step(2, STEPS, 'Looking through your wallet');
+  // Needed only at the review; fetched alongside the scan so it never holds anything up.
+  const limitsP = mode === 'SELL_AND_BRIDGE' ? fetchLimits() : undefined;
   const spinner = ora({ text: 'Finding your tokens and prices…', discardStdin: false }).start();
   let scan: ScanResult;
   let stocks: Set<string>;
@@ -242,7 +236,7 @@ async function main() {
   const { eligible, excluded } = eligibleFor(mode, assets);
   if (eligible.length === 0) {
     const why =
-      mode === 'SELL' || mode === 'SELL_AND_SWEEP' || mode === 'SELL_AND_BRIDGE'
+      sellsTokens(mode)
         ? 'None of your tokens can be sold through the Robinhood Chain routers this tool uses.'
         : mode === 'BURN'
           ? 'There are no tokens in this wallet to burn.'
@@ -275,7 +269,7 @@ async function main() {
     mode === 'BURN' ? 'Pick the spam tokens' : 'Pick your tokens',
     mode === 'BURN' ? 'Tokens flagged as likely spam are already ticked.' : undefined
   );
-  if (excluded.length && (mode === 'SELL' || mode === 'SELL_AND_SWEEP' || mode === 'SELL_AND_BRIDGE')) {
+  if (excluded.length && sellsTokens(mode)) {
     tip(`Not listed because they can't be sold here: ${excluded.map((a) => a.symbol).join(', ')}`);
   }
   const selected = await promptAssets(mode, eligible);
@@ -288,7 +282,7 @@ async function main() {
   printReview(mode, plan, mode === 'SELL' ? undefined : destination, config);
   if (mode === 'SELL_AND_BRIDGE') {
     // Rough check before selling anything: will there be enough ETH to bridge afterwards?
-    const limits = await fetchLimits();
+    const limits = await limitsP;
     const ethFromSales = prices.ethUsd ? plan.reduce((s, p) => s + (usdValue(p.asset, p.amount) ?? 0), 0) / prices.ethUsd : 0;
     const estimate = Number(scan.native.balance) / 1e18 + ethFromSales;
     if (limits && estimate < Number(limits.min) / 1e18) {
@@ -311,11 +305,11 @@ async function main() {
   const ctx: ActionContext = { publicClient, walletClient, owner: sender, dryRun: config.dryRun };
   const results: ActionResult[] = [];
   const [doing, done, would] = VERBS[mode];
-  const n = plan.length + (mode === 'SELL_AND_SWEEP' || mode === 'SELL_AND_BRIDGE' ? 1 : 0);
+  const n = plan.length + (hasFinalEthStep(mode) ? 1 : 0);
 
   for (const [i, { asset, amount, max }] of plan.entries()) {
     const labels = { doing: `${c.dim(`[${i + 1}/${n}]`)} ${doing} ${asset.symbol}…`, done, would };
-    if (mode === 'SELL' || mode === 'SELL_AND_SWEEP' || mode === 'SELL_AND_BRIDGE') {
+    if (sellsTokens(mode)) {
       if (!isTokenAsset(asset)) continue;
       results.push(
         await runStep(

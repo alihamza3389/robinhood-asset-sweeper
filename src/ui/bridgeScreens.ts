@@ -1,7 +1,7 @@
 import { Address, formatEther } from 'viem';
-import { BridgeAmount, BridgeQuote, formatEthShort, TrackResult } from '../actions/bridge.js';
+import { BridgeAmount, BridgeQuote, TrackResult } from '../actions/bridge.js';
 import { Competitor } from '../bridge/across.js';
-import { formatUsd } from './format.js';
+import { formatEthShort, formatUsd } from './format.js';
 import { box, c, emoji, padEnd, padStart, sym, width } from './theme.js';
 
 const ACROSS_ROW = 'Across (used by this tool)';
@@ -22,7 +22,7 @@ export function comparisonRows(acrossExpected: bigint, others: Competitor[]): Co
   return i < MAX_ROWS ? rows.slice(0, MAX_ROWS) : [...rows.slice(0, MAX_ROWS - 1), rows[i]];
 }
 
-export function printBridgeQuote(opts: { q: BridgeQuote; amountArg: BridgeAmount; from: Address; ethUsd?: number; dryRun: boolean }) {
+export function printBridgeQuote(opts: { q: BridgeQuote; amountArg: BridgeAmount; from: Address; ethUsd?: number }) {
   const { q, amountArg, from, ethUsd } = opts;
   const own = q.recipient.toLowerCase() === from.toLowerCase();
   const lines: string[] = [

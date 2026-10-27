@@ -29,11 +29,11 @@ const { guaranteed, gasLimit } = verifyQuote(patched, amount, account.address, a
 console.log(`real quote checked: ${amount} in, ${guaranteed} guaranteed, gas ${gas}`);
 
 const block = await publicClient.getBlock();
-const { maxFee, reserve } = bridgeFee(block.baseFeePerGas ?? 0n);
+const { maxFee } = bridgeFee(block.baseFeePerGas ?? 0n);
 const before = await publicClient.getBalance({ address: account.address });
 const quote: BridgeQuote = {
-  amount, recipient: account.address, guaranteed, expected: BigInt(q.expectedOutputAmount), feeUsd: 0, gasUsd: 0, fillSeconds: 0,
-  competitors: [], reserve, balance: before, quotedAt: Date.now(), expiresAt: q.quoteExpiryTimestamp * 1000,
+  amount, recipient: account.address, guaranteed, expected: BigInt(q.expectedOutputAmount), gasUsd: 0, fillSeconds: 0,
+  competitors: [], quotedAt: Date.now(), expiresAt: q.quoteExpiryTimestamp * 1000,
   planned: { to: q.swapTx.to, data: q.swapTx.data, value: amount, gasLimit, maxFee },
 };
 const native = { kind: 'native' as const, symbol: 'ETH', name: 'Ether', decimals: 18, balance: before };
