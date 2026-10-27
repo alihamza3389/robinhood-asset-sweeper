@@ -5,8 +5,10 @@ import { DEAD_ADDRESS, gmgnTokenUrl } from '../constants.js';
 import { formatAmount, formatUsd, usdValue } from './format.js';
 import { box, c, checkboxTheme, emoji, promptTheme } from './theme.js';
 import { tokenTable } from './table.js';
+import { BridgeAmount, formatEthShort } from '../actions/bridge.js';
+import { usdToWei } from '../bridge/across.js';
 
-export async function promptMode(): Promise<OperationMode | 'QUIT'> {
+export async function promptMode(bridge: boolean): Promise<OperationMode | 'QUIT'> {
   return select<OperationMode | 'QUIT'>({
     message: 'What would you like to do?',
     theme: promptTheme,
@@ -26,6 +28,20 @@ export async function promptMode(): Promise<OperationMode | 'QUIT'> {
         value: 'SELL_AND_SWEEP',
         description: 'Swap tokens into ETH, then send all of it to another address in one go.',
       },
+      ...(bridge
+        ? [
+            {
+              name: `${emoji('🌉')}Bridge ETH to Ethereum`,
+              value: 'BRIDGE' as const,
+              description: 'Move ETH from Robinhood Chain to Ethereum (or an exchange) through Across.',
+            },
+            {
+              name: `${emoji('🚀')}Sell everything, then bridge the ETH`,
+              value: 'SELL_AND_BRIDGE' as const,
+              description: 'Swap tokens into ETH, then bridge all of it to Ethereum in one go.',
+            },
+          ]
+        : []),
       {
         name: `${emoji('🔥')}Get rid of spam tokens`,
         value: 'BURN',
@@ -193,3 +209,97 @@ export async function confirmPlan(dryRun: boolean): Promise<boolean> {
 }
 
 export const isTokenAsset = (a: Asset): a is TokenAsset => a.kind === 'erc20';
+
+/** Where bridged ETH should arrive on Ethereum. The same address is the default: the same key owns it there. */
+export async function promptBridgeDestination(sender: Address, saved?: Address): Promise<{ address: Address; typed: boolean }> {
+  const usableSaved = saved && saved.toLowerCase() !== sender.toLowerCase() && validateDestination(saved, sender) === true ? saved : undefined;
+  const where = await select<'self' | 'saved' | 'other'>({
+    message: 'Where should the ETH arrive on Ethereum?',
+    theme: promptTheme,
+    choices: [
+      { name: `My own wallet (${sender.slice(0, 6)}…${sender.slice(-4)})`, value: 'self', description: 'The same address, on Ethereum. Your key controls it there too.' },
+      ...(usableSaved ? [{ name: `My saved address (${usableSaved.slice(0, 6)}…${usableSaved.slice(-4)})`, value: 'saved' as const }] : []),
+      { name: 'Another address', value: 'other', description: 'Another wallet, or an exchange deposit address for ETH on Ethereum.' },
+    ],
+  });
+  if (where === 'self') return { address: sender, typed: false };
+  if (where === 'saved') return { address: usableSaved!, typed: false };
+  const value = await input({
+    message: 'Paste the Ethereum address:',
+    theme: promptTheme,
+    validate: (v) => {
+      const ok = validateDestination(v, sender);
+      // Your own address is fine here (it is the same wallet, on another chain).
+      return ok === true || v.trim().toLowerCase() === sender.toLowerCase() ? true : ok;
+    },
+  });
+  return { address: getAddress(value.trim()), typed: true };
+}
+
+/**
+ * How much ETH to bridge: an ETH amount, a dollar amount (converted once, at a price two sources
+ * agree on), or everything except the network fee.
+ */
+export async function promptBridgeAmount(opts: {
+  /** ETH that can be bridged after keeping back the fee. */
+  available: bigint;
+  min?: bigint;
+  price?: { usd: number; sources: number };
+}): Promise<BridgeAmount> {
+  const { available, min, price } = opts;
+  const unit = await select<'eth' | 'usd' | 'max'>({
+    message: 'How much do you want to bridge?',
+    theme: promptTheme,
+    choices: [
+      { name: 'An amount in ETH', value: 'eth', description: 'For example 0.05' },
+      price
+        ? { name: 'An amount in US dollars', value: 'usd', description: `For example 125. Converted at $${price.usd.toFixed(2)} per ETH.` }
+        : { name: 'An amount in US dollars', value: 'usd', disabled: '(ETH price unavailable right now)' },
+      { name: 'Everything', value: 'max', description: 'All your ETH, minus a small amount kept back for the network fee.' },
+    ],
+  });
+  if (unit === 'max') return { kind: 'max' };
+  const check = (wei: bigint): true | string => {
+    if (wei <= 0n) return 'The amount must be more than 0';
+    if (min !== undefined && wei < min) return `The Across minimum is ${formatEthShort(min, 'up')} ETH`;
+    if (wei > available) return `You can bridge at most ${formatEthShort(available)} ETH (some is kept back for the fee)`;
+    return true;
+  };
+  const toWei = (v: string): bigint | string => {
+    const s = v.trim().replace(/,/g, '').replace(/^\$/, '').replace(/\s*(usd|eth)$/i, '');
+    if (!/^\d*\.?\d+$/.test(s)) return 'Type a number, like ' + (unit === 'usd' ? '125' : '0.05');
+    try {
+      return unit === 'usd' ? usdToWei(s, price!.usd) : parseUnits(s, 18);
+    } catch {
+      return 'That amount could not be read';
+    }
+  };
+  const raw = await input({
+    message: unit === 'usd' ? 'Amount in US dollars:' : 'Amount in ETH:',
+    theme: promptTheme,
+    validate: (v) => {
+      const wei = toWei(v);
+      return typeof wei === 'string' ? wei : check(wei);
+    },
+  });
+  const wei = toWei(raw) as bigint;
+  if (unit === 'eth') return { kind: 'eth', wei };
+  return { kind: 'usd', usd: raw.trim().replace(/,/g, '').replace(/^\$/, '').replace(/\s*usd$/i, ''), wei, usdPrice: price!.usd };
+}
+
+/**
+ * Final yes/no for a bridge quote. Answers after 60 seconds count as "too slow": the caller fetches a
+ * fresh quote and asks again, so an old price is never signed.
+ */
+export async function confirmBridge(dryRun: boolean): Promise<'yes' | 'no' | 'expired'> {
+  try {
+    const yes = await confirm(
+      { message: dryRun ? 'Run the practice simulation?' : 'Bridge it now? Sign and send?', default: false, theme: promptTheme },
+      { signal: AbortSignal.timeout(60_000) }
+    );
+    return yes ? 'yes' : 'no';
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortPromptError') return 'expired';
+    throw err;
+  }
+}

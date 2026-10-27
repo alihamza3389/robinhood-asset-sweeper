@@ -17,6 +17,7 @@ Options:
   --dry-run            Scan and simulate everything, but never sign or send a transaction
   --slippage <pct>     Max slippage for sells, as a percent (default ${DEFAULTS.slippagePercent})
   --max-impact <pct>   Skip a sale if its quote is this much below the market price (default ${DEFAULTS.maxPriceImpactPercent})
+  --track <tx hash>    Check on a bridge deposit you sent earlier
   --setup              Run the setup wizard again
   --reset              Remove saved settings and your saved (password-locked) key
   -h, --help           Show this help
@@ -41,6 +42,8 @@ export interface CliOptions {
   dryRun: boolean;
   slippagePercent: number;
   maxPriceImpactPercent: number;
+  /** A bridge deposit to check on (--track). */
+  track?: `0x${string}`;
 }
 
 export function parseCli(argv = process.argv.slice(2)): CliOptions {
@@ -50,13 +53,18 @@ export function parseCli(argv = process.argv.slice(2)): CliOptions {
       'dry-run': { type: 'boolean', default: false },
       slippage: { type: 'string' },
       'max-impact': { type: 'string' },
+      track: { type: 'string' },
       setup: { type: 'boolean', default: false },
       reset: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
     strict: true,
   });
+  if (values.track !== undefined && !/^0x[0-9a-fA-F]{64}$/.test(values.track.trim())) {
+    throw new Error(`--track needs a transaction hash (0x followed by 64 characters), got "${values.track}"`);
+  }
   return {
+    track: values.track?.trim() as `0x${string}` | undefined,
     help: values.help ?? false,
     setup: values.setup ?? false,
     reset: values.reset ?? false,

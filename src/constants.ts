@@ -98,6 +98,22 @@ export const DEAD_ADDRESS: Address = '0x000000000000000000000000000000000000dEaD
 /** Second public Robinhood Chain RPC (Allnodes PublicNode). Tested: full method support, broadcasts transactions. */
 export const PUBLICNODE_RPC = 'https://robinhood-rpc.publicnode.com';
 
+// Across: bridges Robinhood Chain ETH to Ethereum ETH. The periphery and spoke pool were verified on
+// Blockscout (2026-10-13); if the Across API ever routes anywhere else, the tool refuses, so a changed or
+// compromised API cannot redirect funds. Check docs.across.to before updating these.
+export const ACROSS = {
+  API: 'https://app.across.to/api',
+  DEST_CHAIN_ID: 1,
+  PERIPHERY: getAddress('0x97CCDBea4632140639aD5eA9b944aa034eb15fD4'),
+  SPOKE_POOL: getAddress('0xD29C85F15DF544bA632C9E25829fd29d767d7978'),
+  MAINNET_WETH: getAddress('0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'),
+  /** Upper bound on the gas a deposit may use; the ETH kept back for the fee is sized from it. */
+  MAX_GAS: 400_000n,
+} as const;
+
+/** Ethereum mainnet RPC, used to check the recipient and show the balance after a bridge. */
+export const ETHEREUM_RPC = 'https://ethereum-rpc.publicnode.com';
+
 export const API = {
   blockscoutPro: (chainId: number) => `https://api.blockscout.com/${chainId}/api/v2`,
   /** Ethereum JSON-RPC served by Blockscout (backup when the public RPC limits requests). */

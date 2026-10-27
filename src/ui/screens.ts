@@ -12,6 +12,8 @@ export const MODE_TITLE: Record<OperationMode, string> = {
   TRANSFER: 'Send to another wallet',
   SELL: 'Sell tokens for ETH',
   SELL_AND_SWEEP: 'Sell everything, then send the ETH',
+  BRIDGE: 'Bridge ETH to Ethereum',
+  SELL_AND_BRIDGE: 'Sell everything, then bridge the ETH',
   BURN: 'Get rid of spam tokens',
 };
 
@@ -45,8 +47,8 @@ function actionWord(mode: OperationMode, asset: Asset): string {
 }
 
 function txCount(mode: OperationMode, plan: PlanItem[]): string {
-  if (mode === 'SELL' || mode === 'SELL_AND_SWEEP') {
-    const extra = mode === 'SELL_AND_SWEEP' ? 1 : 0;
+  if (mode === 'SELL' || mode === 'SELL_AND_SWEEP' || mode === 'SELL_AND_BRIDGE') {
+    const extra = mode === 'SELL' ? 0 : 1;
     return `${plan.length + extra} to ${plan.length * 2 + extra}`;
   }
   return String(plan.length);
@@ -90,6 +92,7 @@ export function printReview(mode: OperationMode, plan: PlanItem[], destination: 
 
   const lines: string[] = [`${c.dim('Action')}    ${c.bold(MODE_TITLE[mode])}`];
   if (mode === 'BURN') lines.push(`${c.dim('To')}        ${c.danger(`${DEAD_ADDRESS} (burn address)`)}`);
+  else if (destination && mode === 'SELL_AND_BRIDGE') lines.push(`${c.dim('To')}        ${c.warn.bold(destination)} ${c.dim('(on Ethereum)')}`);
   else if (destination) lines.push(`${c.dim('To')}        ${c.warn.bold(destination)}`);
   else lines.push(`${c.dim('ETH goes')}  back into this wallet`);
   lines.push('');
@@ -99,10 +102,14 @@ export function printReview(mode: OperationMode, plan: PlanItem[], destination: 
     );
   }
   if (mode === 'SELL_AND_SWEEP') lines.push(`  ${c.dim('then send all the ETH to the address above, minus the fee')}`);
+  if (mode === 'SELL_AND_BRIDGE') {
+    lines.push(`  ${c.dim('then bridge all the ETH to the address above on Ethereum, through Across')}`);
+    lines.push(`  ${c.dim('(you will see the bridge quote and confirm it once the sales are done)')}`);
+  }
   lines.push('');
   lines.push(`${c.dim('Worth')}     ${c.money.bold(`about ${formatUsd(total)}`)} ${c.dim('(prices are estimates)')}`);
   lines.push(`${c.dim('Txs')}       ${txCount(mode, plan)} ${c.dim('(each costs a tiny ETH network fee)')}`);
-  if (mode === 'SELL' || mode === 'SELL_AND_SWEEP') {
+  if (mode === 'SELL' || mode === 'SELL_AND_SWEEP' || mode === 'SELL_AND_BRIDGE') {
     lines.push('');
     lines.push(c.brand(`${sym.ok} A sale is cancelled if the price moves more than ${config.slippagePercent}% while sending`));
     lines.push(c.brand(`${sym.ok} A sale is skipped if its price is ${config.maxPriceImpactPercent}%+ below the market`));

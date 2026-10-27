@@ -1,6 +1,6 @@
 import type { Address } from 'viem';
 
-export type OperationMode = 'TRANSFER' | 'SELL' | 'SELL_AND_SWEEP' | 'BURN';
+export type OperationMode = 'TRANSFER' | 'SELL' | 'SELL_AND_SWEEP' | 'BRIDGE' | 'SELL_AND_BRIDGE' | 'BURN';
 
 /** Which router, if any, can turn this token into ETH. */
 /** UNWRAP: WETH, turned into ETH 1:1 by unwrapping. */

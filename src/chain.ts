@@ -16,7 +16,8 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { Config } from './types.js';
-import { API, CONTRACTS, DEFAULTS, PUBLICNODE_RPC } from './constants.js';
+import { mainnet } from 'viem/chains';
+import { API, CONTRACTS, DEFAULTS, ETHEREUM_RPC, PUBLICNODE_RPC } from './constants.js';
 
 /**
  * Blockscout's JSON-RPC endpoint, used as a backup when the public RPC blocks or rate-limits.
@@ -156,6 +157,13 @@ export function createClients(config: Config) {
   const walletClient = createWalletClient({ account, chain, transport });
 
   return { account, chain, publicClient, walletClient };
+}
+
+/** Ethereum mainnet, read only: checks a bridge recipient and shows its balance. PublicNode, then Blockscout. */
+export function createEthereumClient(blockscoutApiKey: string) {
+  const endpoints: Endpoint[] = [{ transport: http(ETHEREUM_RPC, { retryCount: 0, timeout: 20_000 }), canSend: false }];
+  if (blockscoutApiKey) endpoints.push({ transport: blockscoutRpcTransport(mainnet.id, blockscoutApiKey), canSend: false });
+  return createPublicClient({ chain: mainnet, transport: failover(endpoints) });
 }
 
 export type Clients = ReturnType<typeof createClients>;

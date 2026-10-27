@@ -1,6 +1,6 @@
 # 🧹 Robinhood Chain Asset Sweeper · v3 Rework
 
-**Clean up your Robinhood Chain wallet in a few clicks.** Send your tokens somewhere else, sell them for ETH, or get rid of spam, all at once, with a simple step-by-step menu.
+**Clean up your Robinhood Chain wallet in a few clicks.** Send your tokens somewhere else, sell them for ETH, bridge the ETH to Ethereum, or get rid of spam, all at once, with a simple step-by-step menu.
 
 It's made for people who are **not** developers. If you can copy and paste, you can use it.
 
@@ -10,6 +10,8 @@ It's made for people who are **not** developers. If you can copy and paste, you 
 ❯ 📤 Send to another wallet
   💱 Sell tokens for ETH
   🧹 Sell everything, then send the ETH
+  🌉 Bridge ETH to Ethereum
+  🚀 Sell everything, then bridge the ETH
   🔥 Get rid of spam tokens
   👋 Exit
 ```
@@ -23,6 +25,8 @@ It's made for people who are **not** developers. If you can copy and paste, you 
 | 📤 **Send to another wallet** | Moves tokens and/or ETH to another address, like your main wallet. |
 | 💱 **Sell tokens for ETH** | Sells your tokens (BUCKET, tokenized stocks like AAPL or NVDA, reward tokens, launchpad tokens like ROB, and more) for ETH. The ETH stays in your wallet. |
 | 🧹 **Sell everything, then send the ETH** | Sells your tokens, then sends all the ETH to another address in one go. |
+| 🌉 **Bridge ETH to Ethereum** | Moves ETH from Robinhood Chain to Ethereum through [Across](https://across.to), to your own wallet or an exchange. Choose an amount in ETH, in US dollars, or everything. |
+| 🚀 **Sell everything, then bridge the ETH** | Sells your tokens, then bridges all the ETH to Ethereum in one go. |
 | 🔥 **Get rid of spam tokens** | Sends junk or scam tokens to a burn address so they stop cluttering your wallet. |
 
 ---
@@ -35,7 +39,8 @@ That's great, until your wallet is full of dozens of tiny reward positions. Cash
 
 This tool fixes that. It finds **all** your Bucket Shop payouts automatically, then in one pass it either:
 
-- **sells them all for ETH**, or
+- **sells them all for ETH**,
+- **sells them and bridges the ETH to Ethereum** (or straight to an exchange), or
 - **sends them all** to your main wallet or cold storage.
 
 It works for any Robinhood Chain wallet too: clearing airdrop dust, burning scam tokens, or moving everything to a new wallet.
@@ -50,6 +55,7 @@ Version 3 is a full rewrite, focused on safety and on being easy for anyone to u
 - **Practice mode** to try everything without sending anything
 - Finds **tokenized stocks** correctly, and sells tokens like **GLD and ROB through Uniswap** (v3 and v4)
 - A **summary and chart links** before anything is sent
+- **New in v3.3:** bridge ETH to Ethereum through Across, with a comparison against other bridges
 
 ---
 
@@ -139,6 +145,7 @@ This tool signs real transactions, so it's built to be careful:
 - 🧪 **Everything is tested before it's sent.** Fake "phantom" tokens that can't actually be moved are caught before you pay any fee.
 - 🎯 **Address checks.** It warns you about unusual addresses and asks you to retype the last 4 characters of a new address, which protects against malware that secretly swaps copied addresses.
 - 🔥 **Burning needs you to type `BURN`.** Only tokens flagged as likely spam are pre-selected.
+- 🌉 **Bridging is checked inside the transaction itself.** Before your key signs anything, the tool reads the actual transaction and refuses unless it goes to Across's known contract, for exactly your amount, paying exactly the address you chose on Ethereum. It is then tested against the live chain, and the signed transaction is compared with what was checked. If Across ever can't deliver, the ETH is refunded to your wallet.
 - 👀 **Open source.** Every line of code is in the [`src`](./src) folder for anyone to check.
 
 Blockchain transactions can't be undone. Always read the summary before confirming.
@@ -153,6 +160,7 @@ Blockchain transactions can't be undone. Always read the summary before confirmi
 | Practice mode (sends nothing) | `run.bat --dry-run` | `.\run.ps1 --dry-run` | `./run.sh --dry-run` |
 | Change your settings | `run.bat --setup` | `.\run.ps1 --setup` | `./run.sh --setup` |
 | Start over (remove saved key and settings) | `run.bat --reset` | `.\run.ps1 --reset` | `./run.sh --reset` |
+| Check on a bridge | `run.bat --track 0x…` | `.\run.ps1 --track 0x…` | `./run.sh --track 0x…` |
 | Show help | `run.bat --help` | `.\run.ps1 --help` | `./run.sh --help` |
 
 If you prefer npm: `npm start`, `npm run dry-run`, `npm run setup`, `npm run reset`.
@@ -232,6 +240,7 @@ This tool is free. If it saved you time or money, tips are appreciated:
 - **Selling:** approve the exact amount, simulate for a live quote, then send with `minAmountOut` set to the quote minus the slippage limit.
 - **Network connection:** three connections tried in order: the official Robinhood Chain RPC, then [PublicNode](https://robinhood-rpc.publicnode.com) (reads and transactions), then Blockscout's JSON-RPC with your key (reads only; it checks transactions but does not broadcast them). One that blocks or rate-limits is skipped for a few minutes; transactions retry patiently for about a minute if every connection that can send is busy. Nonces are tracked locally so back-to-back transactions never collide.
 - **Updates:** on start the tool asks GitHub for the latest release. If it is newer it shows the highlights and asks before doing anything; it then downloads the release, checks it is this tool at that version, backs up and replaces the program files (never `.env`, keys or `custom-tokens.json`), and the launcher reinstalls packages and restarts. git clones update with a fast-forward `git pull`.
+- **Bridging:** Robinhood Chain ETH to Ethereum ETH through the Across Swap API, ETH to ETH only. The quote's calldata is decoded and checked field by field (pinned SpokePoolPeriphery and SpokePool, depositor, recipient, amount, WETH to WETH on chain 1, no destination message, output equal to the guaranteed amount, deadline), simulated with `eth_call`, signed locally with viem, and the signed bytes are decoded and compared with the checked plan before broadcast. Quotes older than 90 seconds are fetched again. Comparison quotes (Relay, deBridge, ChangeNOW) are for display only. Dollar amounts need Binance and CoinGecko to agree within 1%. The recipient must not be a contract on Ethereum (it would receive WETH). After sending, the deposit is followed through the Across status API.
 - **Prices:** the Bucket indexer feed, Blockscout, and the BUCKET/ETH Uniswap v4 pool. Prices are for display only; sales use live on-chain quotes.
 - **Saved key:** `wallet.keystore.json`, Web3 Secret Storage v3 (scrypt + AES-128-CTR). Compatible with MetaMask, geth and ethers (checked in the tests).
 
@@ -249,6 +258,8 @@ This tool is free. If it saved you time or money, tips are appreciated:
 | Uniswap Universal Router | `0x8876789976dEcBfCbBbe364623C63652db8C0904` |
 | Uniswap V4Quoter | `0x55083D93eAdff4E1875E5489986Ad56806883139` |
 | Permit2 | `0x000000000022D473030F116dDEE9F6B43aC78BA3` |
+| Across SpokePoolPeriphery | `0x97CCDBea4632140639aD5eA9b944aa034eb15fD4` |
+| Across SpokePool | `0xD29C85F15DF544bA632C9E25829fd29d767d7978` |
 
 ### Options
 
@@ -258,6 +269,7 @@ This tool is free. If it saved you time or money, tips are appreciated:
 --max-impact <pct>   Skip a sale if its quote is this far below the market (default 15)
 --setup              Run the setup wizard again
 --reset              Remove saved settings and the saved key
+--track <tx hash>    Check on a bridge deposit sent earlier
 ```
 
 Advanced settings (such as `RPC_URL` for a private RPC provider) are in [`.env.example`](./.env.example).
@@ -276,9 +288,12 @@ Advanced settings (such as `RPC_URL` for a private RPC provider) are in [`.env.e
 npm install
 npm test           # unit tests
 npm run typecheck
+# bridge signing on a local fork, with a throwaway key (see the file header):
+anvil --fork-url https://robinhood-rpc.publicnode.com --chain-id 4663 --port 8549
+FORK_RPC=http://127.0.0.1:8549 node --import tsx test/bridge-fork.ts
 ```
 
-Code layout: `src/scan` finds tokens and prices, `src/actions` sends, sells and burns, `src/ui` draws the screens, `src/keystore.ts` handles the saved key.
+Code layout: `src/scan` finds tokens and prices, `src/actions` sends, sells, burns and bridges, `src/bridge` talks to Across and checks its quotes, `src/ui` draws the screens, `src/keystore.ts` handles the saved key.
 
 </details>
 

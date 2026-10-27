@@ -5,8 +5,11 @@ import { HELP, loadConfig, parseCli } from './config.js';
 import { askBlockscoutKey, envExists, runSetupWizard } from './setup.js';
 import { runReset } from './reset.js';
 import { checkForUpdate, RESTART_EXIT_CODE } from './update.js';
-import { createClients } from './chain.js';
-import { CONTRACTS, DEAD_ADDRESS, FALLBACK_STOCK_TOKENS } from './constants.js';
+import { createClients, createEthereumClient } from './chain.js';
+import { chooseBridgeDestination, executeBridge, quoteAndConfirm, runBridgeMode, runTrack } from './bridgeFlow.js';
+import { fetchLimits } from './bridge/across.js';
+import { formatEthShort } from './actions/bridge.js';
+import { CONTRACTS, DEAD_ADDRESS, DEFAULTS, FALLBACK_STOCK_TOKENS } from './constants.js';
 import { Asset, ActionResult, OperationMode, TokenAsset } from './types.js';
 import { loadCustomTokens, saveCustomToken } from './scan/customTokens.js';
 import { fetchRobinhoodStocks } from './scan/registry.js';
@@ -37,6 +40,8 @@ const VERBS: Record<OperationMode, [string, string, string]> = {
   TRANSFER: ['Sending', 'Sent', 'Would send'],
   SELL: ['Selling', 'Sold', 'Would sell'],
   SELL_AND_SWEEP: ['Selling', 'Sold', 'Would sell'],
+  BRIDGE: ['Bridging', 'Bridged', 'Would bridge'],
+  SELL_AND_BRIDGE: ['Selling', 'Sold', 'Would sell'],
   BURN: ['Burning', 'Burned', 'Would burn'],
 };
 
@@ -53,8 +58,11 @@ function eligibleFor(mode: OperationMode, assets: Asset[]): { eligible: Asset[];
         return true;
       case 'BURN':
         return a.kind === 'erc20';
+      case 'BRIDGE':
+        return a.kind === 'native';
       case 'SELL':
       case 'SELL_AND_SWEEP':
+      case 'SELL_AND_BRIDGE':
         return a.kind === 'erc20' && a.route !== 'NONE';
     }
   };
@@ -95,6 +103,10 @@ async function main() {
     await runReset();
     return;
   }
+  if (cli.track) {
+    await runTrack(cli.track);
+    return;
+  }
   if (cli.setup || (!envExists() && !process.env.PRIVATE_KEY)) {
     await runSetupWizard();
   }
@@ -114,13 +126,15 @@ async function main() {
 
   // Step 1: what to do, and where to
   step(1, STEPS, 'Choose what to do', 'Use the arrow keys, then press Enter.');
-  const choice = await promptMode();
+  const canBridge = config.chainId === DEFAULTS.chainId;
+  const choice = await promptMode(canBridge);
   if (choice === 'QUIT') {
     console.log(c.dim('\nBye! Nothing was changed.'));
     return;
   }
   const mode: OperationMode = choice;
   let destination: Address | undefined;
+  let l1: ReturnType<typeof createEthereumClient> | undefined;
   if (mode === 'TRANSFER' || mode === 'SELL_AND_SWEEP') {
     tip('Double-check the address. Crypto sent to the wrong address cannot be recovered.');
     destination = await promptDestination(sender, config.defaultDestination);
@@ -147,6 +161,15 @@ async function main() {
           )
       );
       if (!(await confirm({ message: 'Continue anyway?', default: false, theme: promptTheme }))) return;
+    }
+  } else if (mode === 'BRIDGE' || mode === 'SELL_AND_BRIDGE') {
+    l1 = createEthereumClient(config.blockscoutApiKey);
+    destination = await chooseBridgeDestination(sender, config.defaultDestination, l1);
+    if (!destination) return;
+    if (mode === 'BRIDGE') {
+      await runBridgeMode({ config, ctx: { publicClient, walletClient, owner: sender, dryRun: config.dryRun }, recipient: destination, l1 });
+      printDonations();
+      return;
     }
   } else if (mode === 'BURN') {
     destination = DEAD_ADDRESS;
@@ -219,7 +242,7 @@ async function main() {
   const { eligible, excluded } = eligibleFor(mode, assets);
   if (eligible.length === 0) {
     const why =
-      mode === 'SELL' || mode === 'SELL_AND_SWEEP'
+      mode === 'SELL' || mode === 'SELL_AND_SWEEP' || mode === 'SELL_AND_BRIDGE'
         ? 'None of your tokens can be sold through the Robinhood Chain routers this tool uses.'
         : mode === 'BURN'
           ? 'There are no tokens in this wallet to burn.'
@@ -252,7 +275,7 @@ async function main() {
     mode === 'BURN' ? 'Pick the spam tokens' : 'Pick your tokens',
     mode === 'BURN' ? 'Tokens flagged as likely spam are already ticked.' : undefined
   );
-  if (excluded.length && (mode === 'SELL' || mode === 'SELL_AND_SWEEP')) {
+  if (excluded.length && (mode === 'SELL' || mode === 'SELL_AND_SWEEP' || mode === 'SELL_AND_BRIDGE')) {
     tip(`Not listed because they can't be sold here: ${excluded.map((a) => a.symbol).join(', ')}`);
   }
   const selected = await promptAssets(mode, eligible);
@@ -263,6 +286,15 @@ async function main() {
   // Step 4: review
   step(4, STEPS, 'Review', 'Nothing has been sent yet.');
   printReview(mode, plan, mode === 'SELL' ? undefined : destination, config);
+  if (mode === 'SELL_AND_BRIDGE') {
+    // Rough check before selling anything: will there be enough ETH to bridge afterwards?
+    const limits = await fetchLimits();
+    const ethFromSales = prices.ethUsd ? plan.reduce((s, p) => s + (usdValue(p.asset, p.amount) ?? 0), 0) / prices.ethUsd : 0;
+    const estimate = Number(scan.native.balance) / 1e18 + ethFromSales;
+    if (limits && estimate < Number(limits.min) / 1e18) {
+      tip(c.warn(`After the sales you may have less ETH than the Across minimum (${formatEthShort(limits.min, 'up')} ETH). If so, the ETH stays here.`));
+    }
+  }
   const proceed = mode === 'BURN' && !config.dryRun ? await confirmBurn(plan.length) : await confirmPlan(config.dryRun);
   if (!proceed) {
     console.log(c.dim('\nCancelled. Nothing was sent.'));
@@ -279,11 +311,11 @@ async function main() {
   const ctx: ActionContext = { publicClient, walletClient, owner: sender, dryRun: config.dryRun };
   const results: ActionResult[] = [];
   const [doing, done, would] = VERBS[mode];
-  const n = plan.length + (mode === 'SELL_AND_SWEEP' ? 1 : 0);
+  const n = plan.length + (mode === 'SELL_AND_SWEEP' || mode === 'SELL_AND_BRIDGE' ? 1 : 0);
 
   for (const [i, { asset, amount, max }] of plan.entries()) {
     const labels = { doing: `${c.dim(`[${i + 1}/${n}]`)} ${doing} ${asset.symbol}…`, done, would };
-    if (mode === 'SELL' || mode === 'SELL_AND_SWEEP') {
+    if (mode === 'SELL' || mode === 'SELL_AND_SWEEP' || mode === 'SELL_AND_BRIDGE') {
       if (!isTokenAsset(asset)) continue;
       results.push(
         await runStep(
@@ -322,6 +354,21 @@ async function main() {
           config.explorerUrl
         )
       );
+    }
+  }
+
+  if (mode === 'SELL_AND_BRIDGE') {
+    if (results.some((r) => r.status === 'failed')) {
+      console.log(c.warn(`${sym.warn} The ETH was not bridged, because a sale failed. It stays here so you can try again.`));
+    } else {
+      console.log(`\n${c.bold('Now the bridge.')} ${c.dim('Here is the quote for all your ETH:')}`);
+      if (config.dryRun) tip('Practice run: the sales above were only simulated, so this quote uses the ETH you have now.');
+      const q = await quoteAndConfirm({ ctx, amountArg: { kind: 'max' }, recipient: destination!, ethUsd: prices.ethUsd, ask: !config.dryRun });
+      if (q) {
+        results.push(
+          await executeBridge({ ctx, native: scan.native, q, l1: l1!, explorerUrl: config.explorerUrl, ethUsd: prices.ethUsd, label: c.dim(`[${n}/${n}]`) })
+        );
+      }
     }
   }
 
