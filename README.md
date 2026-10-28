@@ -73,6 +73,16 @@ It's fast too: usually **seconds**, not minutes (see the real bridges below). An
 
 You can also sell your tokens and bridge the ETH in one go: **💱 Sell tokens for ETH**, then **Bridge it to Ethereum**.
 
+### Retire your Robinhood Chain wallet
+
+Done with Robinhood Chain, or done with this wallet? The tool can empty it into ETH on Ethereum. Do it in this order, so there's still ETH for the network fees until the last step:
+
+1. **🔥 Get rid of spam tokens** (optional), so the junk is gone.
+2. **📤 Send to another wallet** anything you want to keep that can't be sold (the token list marks those as not sellable).
+3. **💱 Sell tokens for ETH**, then **Bridge it to Ethereum**: every token is sold, and all the ETH is bridged to your wallet (or an exchange) on Ethereum in one go.
+
+What's left behind is just the ETH kept back for the last network fee: a few cents or less. Try it in **🧪 Practice mode** first to see exactly what would happen.
+
 ### Good to know
 
 - **Bridging from Ethereum** needs a little ETH on Ethereum for its network fee. "Everything" keeps that back for you.
@@ -92,7 +102,7 @@ That's great, until your wallet is full of dozens of tiny reward positions. Cash
 This tool fixes that. It finds **all** your Bucket Shop payouts automatically, then in one pass it either:
 
 - **sells them all for ETH**,
-- **sells them and bridges the ETH to Ethereum** (or straight to an exchange), or
+- **sells them and bridges the ETH to Ethereum** (or straight to an exchange), which is also how you [retire a wallet](#retire-your-robinhood-chain-wallet), or
 - **sends them all** to your main wallet or cold storage.
 
 It works for any Robinhood Chain wallet too: clearing airdrop dust, burning scam tokens, or moving everything to a new wallet.
