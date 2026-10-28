@@ -1,4 +1,4 @@
-# 🧹 Robinhood Chain Asset Sweeper · v3 Rework
+# 🧹 Robinhood Chain Asset Sweeper · v4
 
 **Clean up your Robinhood Chain wallet in a few clicks.** Send your tokens somewhere else, sell them for ETH, bridge ETH to or from Ethereum, or get rid of spam, all at once, with a simple step-by-step menu.
 
@@ -42,7 +42,14 @@ This tool fixes that. It finds **all** your Bucket Shop payouts automatically, t
 
 It works for any Robinhood Chain wallet too: clearing airdrop dust, burning scam tokens, or moving everything to a new wallet.
 
-### What's new in v3 (the rework)
+### What's new in v4
+
+- 🌉 **Bridge ETH between Robinhood Chain and Ethereum**, both ways, through [Across](https://across.to). Amounts in ETH, US dollars or everything, with a comparison against other bridges. Every bridge transaction is checked field by field before your key signs it.
+- 🧪 **Practice mode switch** in the menu, and 👀 **Just look around**: explore any wallet without a key.
+- 💱 **A simpler menu.** Sell your tokens, then choose to keep the ETH, send it on, or bridge it to Ethereum.
+- ↩️ **Back to the menu after every action.** Answering No no longer closes the tool.
+
+### What came in v3 (the rework)
 
 Version 3 is a full rewrite, focused on safety and on being easy for anyone to use:
 
@@ -52,7 +59,6 @@ Version 3 is a full rewrite, focused on safety and on being easy for anyone to u
 - **Practice mode** to try everything without sending anything
 - Finds **tokenized stocks** correctly, and sells tokens like **GLD and ROB through Uniswap** (v3 and v4)
 - A **summary and chart links** before anything is sent
-- **New:** bridge ETH between Robinhood Chain and Ethereum (either way) through Across, a shorter menu that returns after every action, a Practice mode switch, and "Just look around" without a key
 
 ---
 
