@@ -28,6 +28,61 @@ It's made for people who are **not** developers. If you can copy and paste, you 
 
 ---
 
+## 🌉 Bridging: Robinhood Chain ⇄ Ethereum
+
+Moving ETH off (or onto) Robinhood Chain used to mean comparing bridge sites, connecting your wallet to each one, and hoping the fee shown was the fee you paid. The tool now does it in a few steps, through [**Across**](https://across.to), and shows you the other bridges' prices next to it.
+
+### Why Across: it's the cheapest, by a lot
+
+We checked every bridge that serves Robinhood Chain and compared what actually arrives for the same ETH. Across came out cheapest (or tied) at every size, in both directions.
+
+> 📅 **These are live quotes from 28 October 2026** (ETH at about $2,360). Fees change with the market, so yours will differ. The tool always fetches fresh quotes and shows you this same comparison, for your exact amount, before you confirm.
+
+| You bridge | Across | Relay | ChangeNOW | deBridge |
+| :--- | ---: | ---: | ---: | ---: |
+| **Robinhood → Ethereum** | | | | |
+| 0.01 ETH (~$24) | **$0.14** | $0.14 | $0.56 | $3.14 |
+| 0.1 ETH (~$236) | **$0.21** | $0.35 | $2.66 | $4.89 |
+| 1 ETH (~$2,360) | **$0.92** | $2.48 | $33.08 | $23.33 |
+| **Ethereum → Robinhood** | | | | |
+| 0.01 ETH | **$0.01** | $0.04 | $0.56 | $2.92 |
+| 0.1 ETH | **$0.03** | $0.16 | $2.66 | $4.62 |
+| 1 ETH | **$0.14** | $1.44 | $33.08 | $20.90 |
+
+<sub>Bridge fee = ETH sent minus ETH received, as quoted on 28 Oct 2026. ChangeNOW is custodial (you trust them with the funds), so it's shown for price only.</sub>
+
+On top of the bridge fee you pay the normal network fee to send the deposit: **under a cent on Robinhood Chain**, and **a few cents on Ethereum** (about $0.03 in October 2026; Ethereum fees go up when the network is busy).
+
+It's fast too: usually **seconds**, not minutes (see the real bridges below). And the amount Across quotes is **guaranteed**: it's written into the transaction itself, so you never get less.
+
+### Real bridges made with this tool
+
+| Date | Direction | Sent | Arrived | Bridge fee | Arrived in |
+| :--- | :--- | ---: | ---: | ---: | ---: |
+| 27 Oct 2026 | Robinhood → Ethereum | 0.004266 ETH | 0.004248 ETH | $0.04 | 10 seconds |
+| 27 Oct 2026 | Ethereum → Robinhood | 0.004226 ETH | 0.004221 ETH | $0.01 | 1 second |
+| 27 Oct 2026 | Ethereum → Robinhood | 0.002013 ETH | 0.002008 ETH | $0.01 (+ $0.03 gas) | 1 second |
+
+### How to bridge
+
+1. Choose **🌉 Bridge ETH**, then the direction: **Robinhood Chain → Ethereum** or **Ethereum → Robinhood Chain**.
+2. Choose where it should arrive: **your own wallet** (the same address works on both chains), your saved address, or another address such as an exchange deposit address.
+3. Choose how much: an amount **in ETH**, **in US dollars**, or **everything** (a tiny amount is kept back for the network fee).
+4. Check the quote: what you send, what's **guaranteed** to arrive, the fee, and the comparison with other bridges. Nothing is sent until you say yes.
+5. The tool sends the deposit and **waits until it arrives**, then shows your balance before and after, with links to both transactions.
+
+You can also sell your tokens and bridge the ETH in one go: **💱 Sell tokens for ETH**, then **Bridge it to Ethereum**.
+
+### Good to know
+
+- **Bridging from Ethereum** needs a little ETH on Ethereum for its network fee. "Everything" keeps that back for you.
+- **The minimum** is set by Across: about 0.0002 ETH (around $0.50) in October 2026. The tool always shows the current limits.
+- **Sending to an exchange?** Use the exchange's deposit address for **ETH on Ethereum**. Don't send Robinhood Chain ETH straight to an exchange unless it clearly supports the Robinhood Chain network: some list it in a way that can't be traded. Bridge to Ethereum first, then deposit normal ETH.
+- **If Across can't deliver** (very rare), the ETH is refunded to your wallet on the chain it came from, as WETH (wrapped ETH, worth the same).
+- **Closed the window too early?** Check on any bridge later with `--track 0x…` (the deposit's transaction hash).
+
+---
+
 ## Why this exists
 
 [**Bucket Shop**](https://www.bucketmarkets.com/) ([@RealBucketShop](https://x.com/RealBucketShop)) pays its fee rewards straight into holders' wallets, spread across **anywhere from 1 to 20 different assets**: crypto tokens and tokenized stocks like AAPL, NVDA or GLD.
@@ -44,7 +99,7 @@ It works for any Robinhood Chain wallet too: clearing airdrop dust, burning scam
 
 ### What's new in v4
 
-- 🌉 **Bridge ETH between Robinhood Chain and Ethereum**, both ways, through [Across](https://across.to). Amounts in ETH, US dollars or everything, with a comparison against other bridges. Every bridge transaction is checked field by field before your key signs it.
+- 🌉 **Bridge ETH between Robinhood Chain and Ethereum**, both ways, through [Across](https://across.to), the cheapest bridge we found (in October 2026, about $0.92 to move 1 ETH to Ethereum and $0.14 the other way). Amounts in ETH, US dollars or everything, with a comparison against other bridges. Every bridge transaction is checked field by field before your key signs it. [More below](#-bridging-robinhood-chain--ethereum).
 - 🧪 **Practice mode switch** in the menu, and 👀 **Just look around**: explore any wallet without a key.
 - 💱 **A simpler menu.** Sell your tokens, then choose to keep the ETH, send it on, or bridge it to Ethereum.
 - ↩️ **Back to the menu after every action.** Answering No no longer closes the tool.
@@ -109,7 +164,7 @@ The first time, it installs what it needs (a few seconds), then opens the **setu
 
 It asks three things:
 
-1. **Your private key, and how to keep it.** We recommend **"Save it locked with a password"**. You paste your key once, choose a password, and from then on you only type the password. The key is encrypted on your computer and never leaves it.
+1. **Your private key, and how to keep it.** We recommend **"Save it locked with a password"**. You paste your key once, choose a password, and from then on you only type the password. The key is encrypted on your computer and never leaves it. Not ready to use your key yet? Pick **"Just look around first"** (see [Practice mode](#try-it-with-no-risk-first-practice-mode)).
 2. **Your Blockscout key** from above. The wizard checks it works.
 3. **Your usual destination address** (optional), so you don't have to paste it every time.
 
@@ -124,6 +179,8 @@ Use the **arrow keys** to move, **Space** to tick or untick a token, and **Enter
 3. **Pick your tokens** and how much of each (everything, a number like `1.5`, or a percent like `50%`).
 4. **Review.** A summary box shows exactly what will happen, plus a chart link for each token. **Nothing is sent before you confirm.**
 5. **Go.** You'll see each step finish, with a link to view it on the explorer.
+
+Bridging has its own short steps (direction, destination, amount, quote): see [How to bridge](#how-to-bridge).
 
 When it's done, or if you answer **No** anywhere, you're taken **back to the menu** (no need to unlock again). Choose **Exit** to close the tool.
 
@@ -156,7 +213,7 @@ This tool signs real transactions, so it's built to be careful:
 - 🧪 **Everything is tested before it's sent.** Fake "phantom" tokens that can't actually be moved are caught before you pay any fee.
 - 🎯 **Address checks.** It warns you about unusual addresses and asks you to retype the last 4 characters of a new address, which protects against malware that secretly swaps copied addresses.
 - 🔥 **Burning needs you to type `BURN`.** Only tokens flagged as likely spam are pre-selected.
-- 🌉 **Bridging is checked inside the transaction itself.** Before your key signs anything, the tool reads the actual transaction and refuses unless it goes to Across's known contracts for that direction, for exactly your amount, paying exactly the address you chose on the other chain. It is then tested against the live chain, and the signed transaction is compared with what was checked. If Across ever can't deliver, the ETH is refunded to your wallet.
+- 🌉 **Bridging is checked inside the transaction itself.** Before your key signs anything, the tool reads the actual transaction and refuses unless it goes to Across's known contracts for that direction, for exactly your amount, paying exactly the address you chose on the other chain. It is then tested against the live chain, and the signed transaction is compared with what was checked. If Across ever can't deliver, the ETH is refunded to your wallet on the chain it left from.
 - 👀 **Open source.** Every line of code is in the [`src`](./src) folder for anyone to check.
 
 Blockchain transactions can't be undone. Always read the summary before confirming.
@@ -175,7 +232,7 @@ Blockchain transactions can't be undone. Always read the summary before confirmi
 | Check on a bridge | `run.bat --track 0x…` | `.\run.ps1 --track 0x…` | `./run.sh --track 0x…` |
 | Show help | `run.bat --help` | `.\run.ps1 --help` | `./run.sh --help` |
 
-If you prefer npm: `npm start`, `npm run dry-run`, `npm run setup`, `npm run reset`.
+If you prefer npm: `npm start`, `npm run dry-run`, `npm run setup`, `npm run reset` (other options go after `--`, for example `npm start -- --look 0x…`).
 
 ---
 
@@ -203,7 +260,16 @@ After 3 wrong tries, choose **"I forgot it: paste my private key instead"**, pas
 Run the setup again (`run.bat --setup`, `.\run.ps1 --setup` or `./run.sh --setup`) and paste the key, making sure you copied all of it.
 
 **"This wallet has no ETH"**
-Every transaction needs a tiny bit of ETH on Robinhood Chain to pay the network fee. A dollar or two covers many transactions.
+Every transaction needs a tiny bit of ETH on Robinhood Chain to pay the network fee. A dollar or two covers many transactions. Have ETH on Ethereum? Use **🌉 Bridge ETH**, then **Ethereum → Robinhood Chain**, to bring some over for a few cents.
+
+**A bridge says it's below the Across minimum**
+Across has a minimum per bridge (about 0.0002 ETH, around $0.50, in October 2026; the tool shows the current one). Bridge a little more, or wait until you have more ETH.
+
+**A bridge says "Still on its way"**
+The deposit was sent, Across just hasn't delivered it yet. **Don't bridge again.** Check on it with `--track` and the deposit's transaction hash (shown on screen). It usually arrives within a minute.
+
+**A bridge was refunded**
+Very rarely Across can't deliver. The ETH then comes back to your wallet on the chain it left from, as WETH. On Robinhood Chain, run **💱 Sell tokens for ETH** to turn the WETH back into ETH. On Ethereum, unwrap it in your wallet app or on Uniswap.
 
 **"The Robinhood Chain RPC is temporarily limiting requests"**
 The public network connection sometimes limits busy connections. The tool now switches automatically to a second public connection (PublicNode), and then to Blockscout's connection (using the key you already set up), so you should rarely see this. If you still do, wait a few minutes and start the tool again, or set `RPC_URL` in your `.env` file to a private RPC provider.
@@ -250,9 +316,9 @@ This tool is free. If it saved you time or money, tips are appreciated:
 - **Finding tokens:** the Blockscout Pro API lists the wallet's tokens. The official Robinhood stock list and the Bucket price-feed tokens are also checked directly on-chain, so an indexing gap can't hide them. Robinhood stock tokens are type `ERC-8056` in Blockscout, so the scan accepts every fungible type, not just `ERC-20`.
 - **Balances and routes:** one multicall reads every balance and checks the router registries (`StockRouterUsdg.isRegistered`, `Treasury.isRegistered`). Tokens those routers don't support are checked for Uniswap v3 pools with real liquidity (direct to WETH, or via USDG), then for Uniswap v4 token/ETH pools (found through the PoolManager's `Initialize` events on Blockscout; this covers launchpad tokens such as Pons launches). At sale time every path or pool is quoted and the one returning the most ETH is used. v4 sales go through the Universal Router with exact-amount Permit2 approvals that expire after 10 minutes.
 - **Selling:** approve the exact amount, simulate for a live quote, then send with `minAmountOut` set to the quote minus the slippage limit.
-- **Network connection:** three connections tried in order: the official Robinhood Chain RPC, then [PublicNode](https://robinhood-rpc.publicnode.com) (reads and transactions), then Blockscout's JSON-RPC with your key (reads only; it checks transactions but does not broadcast them). One that blocks or rate-limits is skipped for a few minutes; transactions retry patiently for about a minute if every connection that can send is busy. Nonces are tracked locally so back-to-back transactions never collide.
+- **Network connection:** three connections tried in order: the official Robinhood Chain RPC, then [PublicNode](https://robinhood-rpc.publicnode.com) (reads and transactions), then Blockscout's JSON-RPC with your key (reads only; it checks transactions but does not broadcast them). One that blocks or rate-limits is skipped for a few minutes; transactions retry patiently for about a minute if every connection that can send is busy. Nonces are tracked locally so back-to-back transactions never collide. On Ethereum (bridging only) the tool uses PublicNode, then dRPC, with Flashbots Protect as a send-only backup; Blockscout is not used there because its balances and nonces can lag.
 - **Updates:** on start the tool asks GitHub for the latest release. If it is newer it shows the highlights and asks before doing anything; it then downloads the release, checks it is this tool at that version, backs up and replaces the program files (never `.env`, keys or `custom-tokens.json`), and the launcher reinstalls packages and restarts. git clones update with a fast-forward `git pull`.
-- **Bridging:** ETH between Robinhood Chain and Ethereum, either way, through the Across Swap API, ETH to ETH only. The quote's calldata is decoded and checked field by field against the route's pinned contracts (SpokePoolPeriphery, the origin chain's SpokePool, origin and destination WETH, destination chain id) plus depositor, recipient, amount, no destination message, output equal to the guaranteed amount and deadline. It is simulated with `eth_call`, signed locally with viem, and the signed bytes are decoded and compared with the checked plan before broadcast. Deposits from Ethereum carry a small tip (the network's suggestion, 0.05 to 2 gwei) and are sent through PublicNode, with Flashbots Protect as a send-only backup. Quotes older than 90 seconds are fetched again. Comparison quotes (Relay, deBridge, ChangeNOW) are for display only. Dollar amounts need Binance and CoinGecko to agree within 1%. The recipient must not be a contract on Ethereum (it would receive WETH). After sending, the deposit is followed through the Across status API.
+- **Bridging:** ETH between Robinhood Chain and Ethereum, either way, through the Across Swap API, ETH to ETH only. The quote's calldata is decoded and checked field by field against the route's pinned contracts (SpokePoolPeriphery, the origin chain's SpokePool, origin and destination WETH, destination chain id) plus depositor, recipient, amount, no destination message, output equal to the guaranteed amount and deadline. It is simulated with `eth_call`, signed locally with viem, and the signed bytes are decoded and compared with the checked plan before broadcast. Deposits from Ethereum carry a small tip (the network's suggestion, 0.05 to 2 gwei) and allow the base fee to triple before inclusion (2x on Robinhood Chain). Quotes older than 90 seconds are fetched again. Comparison quotes (Relay, deBridge, ChangeNOW) are for display only. Dollar amounts need Binance and CoinGecko to agree within 1%. The recipient must not be a contract on the destination chain (it would receive WETH). After sending, the deposit is followed through the Across status API.
 - **Prices:** the Bucket indexer feed, Blockscout, and the BUCKET/ETH Uniswap v4 pool. Prices are for display only; sales use live on-chain quotes.
 - **Saved key:** `wallet.keystore.json`, Web3 Secret Storage v3 (scrypt + AES-128-CTR). Compatible with MetaMask, geth and ethers (checked in the tests).
 
