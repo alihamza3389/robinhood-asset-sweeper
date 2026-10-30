@@ -4,6 +4,8 @@
 
 It's made for people who are **not** developers. If you can copy and paste, you can use it.
 
+**[⬇️ Download](#step-1-download) · [▶️ How to run it](#how-to-run-it) · [🧪 Try it with no risk](#try-it-with-no-risk-first-practice-mode) · [🌉 Bridging](#-bridging-robinhood-chain--ethereum) · [🆘 Help](#help-something-went-wrong)**
+
 ```
  STEP 1/5  Choose what to do
 ? What would you like to do?
@@ -111,7 +113,7 @@ It works for any Robinhood Chain wallet too: clearing airdrop dust, burning scam
 
 ### What's new in v4
 
-- 🌉 **Bridge ETH between Robinhood Chain and Ethereum**, both ways, through [Across](https://across.to), the cheapest bridge we found (in October 2026, about $0.92 to move 1 ETH to Ethereum and $0.14 the other way). Amounts in ETH, US dollars or everything, with a comparison against other bridges. Every bridge transaction is checked field by field before your key signs it. [More below](#-bridging-robinhood-chain--ethereum).
+- 🌉 **Bridge ETH between Robinhood Chain and Ethereum**, both ways, through [Across](https://across.to), the cheapest bridge we found (in October 2026, about $0.92 to move 1 ETH to Ethereum and $0.14 the other way). Amounts in ETH, US dollars or everything, with a comparison against other bridges. Every bridge transaction is checked field by field before your key signs it. [More above](#-bridging-robinhood-chain--ethereum).
 - 🧪 **Practice mode switch** in the menu, and 👀 **Just look around**: explore any wallet without a key.
 - 💱 **A simpler menu.** Sell your tokens, then choose to keep the ETH, send it on, or bridge it to Ethereum.
 - ↩️ **Back to the menu after every action.** Answering No no longer closes the tool.
