@@ -30,6 +30,8 @@ It's made for people who are **not** developers. If you can copy and paste, you 
 
 ## 🌉 Bridging: Robinhood Chain ⇄ Ethereum
 
+> 🆕 **New in v4, our biggest update yet.** The tool now bridges ETH in both directions, with every bridge checked before your key signs it.
+
 Moving ETH off (or onto) Robinhood Chain used to mean comparing bridge sites, connecting your wallet to each one, and hoping the fee shown was the fee you paid. The tool now does it in a few steps, through [**Across**](https://across.to), and shows you the other bridges' prices next to it.
 
 ### Why Across: it's the cheapest, by a lot
