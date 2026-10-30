@@ -36,7 +36,7 @@ Moving ETH off (or onto) Robinhood Chain used to mean comparing bridge sites, co
 
 We checked every bridge that serves Robinhood Chain and compared what actually arrives for the same ETH. Across came out cheapest (or tied) at every size, in both directions.
 
-> 📅 **These are live quotes from 28 October 2026** (ETH at about $2,360). Fees change with the market, so yours will differ. The tool always fetches fresh quotes and shows you this same comparison, for your exact amount, before you confirm.
+> 📅 **These are live quotes from 28 October 2026** (ETH at about $2,360). Fees change with the market, so yours will differ. **Robinhood → Ethereum costs more when Ethereum is busy**, because the fee includes the Ethereum gas to deliver your ETH (on 30 October 2026, with gas up, it was about $2.64 for 1 ETH, and Relay was a little cheaper for small amounts). Ethereum → Robinhood stays cheap. The tool always fetches fresh quotes and shows you this same comparison, for your exact amount, before you confirm.
 
 | You bridge | Across | Relay | ChangeNOW | deBridge |
 | :--- | ---: | ---: | ---: | ---: |
@@ -113,6 +113,7 @@ It works for any Robinhood Chain wallet too: clearing airdrop dust, burning scam
 - 🧪 **Practice mode switch** in the menu, and 👀 **Just look around**: explore any wallet without a key.
 - 💱 **A simpler menu.** Sell your tokens, then choose to keep the ETH, send it on, or bridge it to Ethereum.
 - ↩️ **Back to the menu after every action.** Answering No no longer closes the tool.
+- 📦 **One-click download** of the latest version (since v4.1).
 
 ### What came in v3 (the rework)
 
@@ -151,7 +152,7 @@ You'll paste this key once, in the setup wizard.
 
 ### Step 1: Download
 
-**[Download the latest version (ZIP)](https://github.com/alihamza3389/robinhood-asset-sweeper/releases/latest/download/robinhood-asset-sweeper.zip)**. Find the downloaded file, right-click it and choose **Extract All**.
+**[Download the latest version (ZIP)](https://github.com/alihamza3389/robinhood-asset-sweeper/releases/latest/download/robinhood-asset-sweeper.zip)**. Find the downloaded file, right-click it and choose **Extract All** (on a Mac, double-click it).
 
 <details>
 <summary>Or, if you use git</summary>
@@ -203,6 +204,8 @@ When it's done, or if you answer **No** anywhere, you're taken **back to the men
 **🧪 Have a wallet? Flip the switch.** Pick **🧪 Practice mode** in the menu to turn it ON, try a sale or a bridge on your own tokens, then turn it OFF and do it for real. No restart needed.
 
 **👀 Just looking? No key needed.** New here, or not ready to trust a new tool with your key? Choose **Just look around** when the tool starts (or in the setup wizard), then paste **any** wallet address: yours, or one you saw on an explorer or on X. You'll see that wallet's real tokens, prices, sell routes and bridge quotes. Without a key nothing can ever be signed or sent.
+
+Both use the wallet's **real balance**, so the preview matches what a real run would do: you can't bridge or sell more than the wallet holds, even in practice.
 
 You can also start straight in either one:
 
