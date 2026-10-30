@@ -180,7 +180,7 @@ export async function runBridgeMode(opts: { config: Config; robinhood: BridgeCon
   }
 
   step(3, STEPS, 'Choose the amount');
-  const amountArg = await promptBridgeAmount({ available, min: limits?.min, price });
+  const amountArg = await promptBridgeAmount({ available, min: limits?.min, price, practice: config.dryRun });
 
   step(4, STEPS, 'Review', 'Nothing has been sent yet.');
   const ethUsd = price?.usd;

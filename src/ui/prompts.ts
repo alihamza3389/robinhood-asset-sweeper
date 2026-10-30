@@ -314,8 +314,10 @@ export async function promptBridgeAmount(opts: {
   available: bigint;
   min?: bigint;
   price?: { usd: number; sources: number };
+  /** Practice mode: say the cap is the real balance, not a practice limit. */
+  practice?: boolean;
 }): Promise<BridgeAmount> {
-  const { available, min, price } = opts;
+  const { available, min, price, practice } = opts;
   const unit = await select<'eth' | 'usd' | 'max'>({
     message: 'How much do you want to bridge?',
     theme: promptTheme,
@@ -331,7 +333,8 @@ export async function promptBridgeAmount(opts: {
   const check = (wei: bigint): true | string => {
     if (wei <= 0n) return 'The amount must be more than 0';
     if (min !== undefined && wei < min) return `The Across minimum is ${formatEthShort(min, 'up')} ETH`;
-    if (wei > available) return `You can bridge at most ${formatEthShort(available)} ETH (some is kept back for the fee)`;
+    if (wei > available)
+      return `You can bridge at most ${formatEthShort(available)} ETH (some is kept back for the fee)${practice ? ". Practice mode uses the wallet's real balance." : ''}`;
     return true;
   };
   // "$1,250 usd" -> "1250": the same cleaning for checking the input and for keeping it.
