@@ -1,6 +1,6 @@
 {
   "name": "robinhood-chain-asset-sweeper",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "private": true,
   "description": "Send, sell, bridge (Robinhood Chain <-> Ethereum) or clean up a Robinhood Chain wallet from your terminal, with simulation-first safety checks",
   "license": "MIT",
