@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { custom, decodeAbiParameters, getAddress, HttpRequestError, keccak256, parseEther, RpcRequestError, zeroAddress } from 'viem';
 import { failover } from '../src/chain.js';
-import { isNewer, isUserFile, summarizeNotes } from '../src/update.js';
+import { isNewer, isUserFile, readReleases, summarizeNotes } from '../src/update.js';
 import { describeError } from '../src/actions/context.js';
 import { applySlippage, priceImpactPercent } from '../src/actions/sell.js';
 import { maxSendable } from '../src/actions/transfer.js';
@@ -340,11 +340,33 @@ test('updater: version comparison, release-note summary, protected user files', 
   const notes = summarizeNotes('## Fixes\n- 🔌 **No more failed sales** when [busy](https://x)\n- second\n\nplain line\n* third');
   assert.deepEqual(notes, ['No more failed sales when busy', 'second', 'third']);
   assert.deepEqual(summarizeNotes('- First sentence here. Second one is dropped.'), ['First sentence here.']);
+  assert.deepEqual(summarizeNotes('## What\'s new\n- New thing\n\n## How to update\n- Press Enter'), ['New thing']);
 
   for (const f of ['.env', '.env.bak', 'wallet.keystore.json', 'wallet.keystore.123.bak.json', 'custom-tokens.json', 'node_modules/x/y.js', '.git/HEAD'])
     assert.equal(isUserFile(f), true, f);
   for (const f of ['src/index.ts', 'package.json', 'run.bat', 'README.md', '.env.example'])
     assert.equal(isUserFile(f), false, f);
+});
+
+test('updater: picks the newest release, counts our downloads, only trusts this repo\'s files', () => {
+  const base = 'https://github.com/alihamza3389/robinhood-asset-sweeper/releases/download';
+  const asset = (tag: string, ext: string, n: number, url = `${base}/${tag}/robinhood-asset-sweeper-${tag}.${ext}`) => ({
+    name: `robinhood-asset-sweeper-${tag}.${ext}`,
+    download_count: n,
+    browser_download_url: url,
+  });
+  const info = readReleases([
+    { tag_name: 'v4.1.0-beta', prerelease: true, assets: [asset('v4.1.0-beta', 'zip', 1)] },
+    { tag_name: 'v4.0.1', body: 'notes', assets: [asset('v4.0.1', 'zip', 10), asset('v4.0.1', 'tar.gz', 5), { name: 'robinhood-asset-sweeper.zip', download_count: 3, browser_download_url: 'x' }, { name: 'other.bin', download_count: 99, browser_download_url: 'x' }] },
+    { tag_name: 'v4.0.0', assets: [] },
+  ]);
+  assert.equal(info.latest?.tag, 'v4.0.1');
+  assert.equal(info.latest?.archiveUrl, `${base}/v4.0.1/robinhood-asset-sweeper-v4.0.1.tar.gz`);
+  assert.equal(info.downloads, 19); // our files only, prereleases included
+  // A release without our upload (or one pointing elsewhere) falls back to GitHub's own source download.
+  assert.equal(readReleases([{ tag_name: 'v4.0.0', assets: [] }]).latest?.archiveUrl, undefined);
+  assert.equal(readReleases([{ tag_name: 'v4.0.1', assets: [asset('v4.0.1', 'tar.gz', 0, 'https://evil.example/x.tar.gz')] }]).latest?.archiveUrl, undefined);
+  assert.deepEqual(readReleases([]), { downloads: 0 });
 });
 
 test('RPC failover chain: official -> publicnode (reads + sends) -> Blockscout (reads only)', async () => {

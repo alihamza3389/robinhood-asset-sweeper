@@ -86,11 +86,13 @@ export function box(lines: string[], opts: { title?: string; color?: (s: string)
   return [top, ...body, bottom].join('\n');
 }
 
-export function banner(dryRun = false): void {
+/** `downloads` is shown only when given (the caller decides when it is worth showing). */
+export function banner(dryRun = false, downloads?: number): void {
   const lines = [
     `${c.brandBold(`${emoji('🧹')}Robinhood Chain Asset Sweeper`)} ${c.dim(VERSION)}`,
     c.dim('Send, sell, bridge or clean up your wallet'),
   ];
+  if (downloads !== undefined) lines.push(c.dim(`${emoji('📦')}Downloaded ${downloads.toLocaleString('en-US')} times`));
   console.log('\n' + box(lines));
   if (dryRun) printPractice();
 }

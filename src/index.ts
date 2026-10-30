@@ -4,7 +4,7 @@ import { confirm } from '@inquirer/prompts';
 import { HELP, loadConfig, parseCli } from './config.js';
 import { askBlockscoutKey, envExists, runSetupWizard } from './setup.js';
 import { runReset } from './reset.js';
-import { checkForUpdate, RESTART_EXIT_CODE } from './update.js';
+import { checkForUpdate, fetchReleases, MIN_DOWNLOADS_SHOWN, RESTART_EXIT_CODE } from './update.js';
 import { Clients, createClients, createEthereumClients } from './chain.js';
 import { chooseBridgeDestination, executeBridge, quoteAndConfirm, runBridgeMode, runTrack } from './bridgeFlow.js';
 import { fetchLimits } from './bridge/across.js';
@@ -94,9 +94,11 @@ async function main() {
   }
   // Start on a clean screen (also hides npm's own startup lines).
   if (process.stdout.isTTY) console.clear();
-  banner(cli.dryRun);
+  const releases = await fetchReleases();
+  const downloads = releases && releases.downloads >= MIN_DOWNLOADS_SHOWN ? releases.downloads : undefined;
+  banner(cli.dryRun, downloads);
   // Before anything else (and before the key is unlocked): offer a newer version if there is one.
-  if (!cli.reset && (await checkForUpdate())) {
+  if (!cli.reset && (await checkForUpdate(releases))) {
     process.exit(process.env.SWEEPER_LAUNCHER === '1' ? RESTART_EXIT_CODE : 0);
   }
   if (cli.reset) {

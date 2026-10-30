@@ -48,7 +48,9 @@ export function isNewer(latest: string, current: string): boolean {
 
 /** The first few bullet points of the release notes, as plain text. */
 export function summarizeNotes(body: string, max = 4): string[] {
+  // The "How to update" section is instructions, not news.
   return body
+    .split(/^#+\s*How to update.*$/im)[0]
     .split(/\r?\n/)
     .filter((l) => /^\s*[-*]\s+/.test(l))
     .map((l) =>
@@ -73,17 +75,63 @@ interface Release {
   tag: string;
   name: string;
   body: string;
+  /** The release's own .tar.gz upload, if it has one. Downloading it is what counts an update. */
+  archiveUrl?: string;
 }
 
-async function latestRelease(): Promise<Release | undefined> {
+interface GitHubRelease {
+  tag_name?: string;
+  name?: string;
+  body?: string;
+  draft?: boolean;
+  prerelease?: boolean;
+  assets?: { name: string; download_count: number; browser_download_url: string }[];
+}
+
+/**
+ * Every release uploads robinhood-asset-sweeper.zip (for people: the README links to the latest one)
+ * and robinhood-asset-sweeper-<tag>.tar.gz (for the updater). GitHub counts downloads of both.
+ */
+const ASSET_PREFIX = 'robinhood-asset-sweeper';
+/** The banner only shows the download count once it is worth showing. */
+export const MIN_DOWNLOADS_SHOWN = 100;
+
+export interface ReleaseInfo {
+  latest?: Release;
+  /** Downloads of the uploaded release files, across all releases (fresh downloads and updates). */
+  downloads: number;
+}
+
+/** Exported for tests: the newest published release, and the total downloads of our uploaded files. */
+export function readReleases(list: GitHubRelease[]): ReleaseInfo {
+  let latest: GitHubRelease | undefined;
+  let downloads = 0;
+  for (const r of list) {
+    for (const a of r.assets ?? []) if (a.name.startsWith(ASSET_PREFIX) && /\.(zip|tar\.gz)$/.test(a.name)) downloads += a.download_count;
+    if (r.draft || r.prerelease || !r.tag_name || !parseVersion(r.tag_name)) continue;
+    if (!latest || isNewer(r.tag_name, latest.tag_name!)) latest = r;
+  }
+  if (!latest) return { downloads };
+  const tag = latest.tag_name!;
+  // Only ever download from this repo's own release files.
+  const archiveUrl = latest.assets?.find(
+    (a) =>
+      a.name === `${ASSET_PREFIX}-${tag}.tar.gz` &&
+      a.browser_download_url === `https://github.com/${REPO}/releases/download/${tag}/${a.name}`
+  )?.browser_download_url;
+  return { latest: { tag, name: latest.name ?? tag, body: latest.body ?? '', archiveUrl }, downloads };
+}
+
+/** One request for both the update check and the download count. Undefined if GitHub does not answer. */
+export async function fetchReleases(): Promise<ReleaseInfo | undefined> {
+  if (process.env.SWEEPER_NO_UPDATE === '1' || !process.stdout.isTTY) return undefined;
   try {
-    const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
+    const res = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=100`, {
       headers: { Accept: 'application/vnd.github+json', 'User-Agent': PACKAGE_NAME },
       signal: AbortSignal.timeout(4_000),
     });
     if (!res.ok) return undefined;
-    const d = (await res.json()) as { tag_name?: string; name?: string; body?: string };
-    return d.tag_name ? { tag: d.tag_name, name: d.name ?? d.tag_name, body: d.body ?? '' } : undefined;
+    return readReleases((await res.json()) as GitHubRelease[]);
   } catch {
     return undefined;
   }
@@ -124,10 +172,11 @@ function listFiles(dir: string, base = dir): string[] {
 }
 
 /** Download the release, check it, then swap the program files (with a backup to roll back to). */
-async function updateFromArchive(tag: string): Promise<void> {
+async function updateFromArchive(tag: string, archiveUrl?: string): Promise<void> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sweeper-update-'));
   try {
-    const res = await fetch(`https://api.github.com/repos/${REPO}/tarball/${encodeURIComponent(tag)}`, {
+    // The release's uploaded file when it has one (so the update is counted), else GitHub's source download.
+    const res = await fetch(archiveUrl ?? `https://api.github.com/repos/${REPO}/tarball/${encodeURIComponent(tag)}`, {
       headers: { 'User-Agent': PACKAGE_NAME },
       signal: AbortSignal.timeout(60_000),
     });
@@ -180,10 +229,9 @@ async function updateFromArchive(tag: string): Promise<void> {
  * Check for a newer release and offer to install it. Returns true if the program should exit so
  * the launcher can reinstall packages and start the new version.
  */
-export async function checkForUpdate(): Promise<boolean> {
-  if (process.env.SWEEPER_NO_UPDATE === '1' || !process.stdout.isTTY) return false;
+export async function checkForUpdate(releases: ReleaseInfo | undefined): Promise<boolean> {
   const current = currentVersion();
-  const latest = await latestRelease();
+  const latest = releases?.latest;
   if (!latest || !isNewer(latest.tag, current)) return false;
 
   const notes = summarizeNotes(latest.body);
@@ -208,7 +256,7 @@ export async function checkForUpdate(): Promise<boolean> {
   process.stdout.write(c.dim(`  Downloading ${latest.tag}… `));
   try {
     if (isGitCheckout()) updateWithGit(latest.tag);
-    else await updateFromArchive(latest.tag);
+    else await updateFromArchive(latest.tag, latest.archiveUrl);
   } catch (err) {
     console.log(c.danger(`${sym.fail} ${(err as Error).message}`));
     console.log(c.dim(`  You can download it yourself: https://github.com/${REPO}/releases/latest`));
